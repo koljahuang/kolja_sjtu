@@ -1,0 +1,4 @@
+CREATE DEFINER=`root`@`localhost` PROCEDURE `DropGeometryColumn`(catalog varchar(64), t_schema varchar(64),
+   t_name varchar(64), geometry_column varchar(64))
+begin
+  set @qwe= concat('ALTER TABLE ', t_schema, '.', t_name, ' DROP ', geometry_column); PREPARE ls from @qwe; execute ls; deallocate prepare ls; end

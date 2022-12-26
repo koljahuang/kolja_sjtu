@@ -1,0 +1,67 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_professor_course_info`()
+BEGIN
+-- 学院开课总门数详情
+-- 学院代码，学院名称，课程代码，课程名称，学年，学期，所有任课老师逗号去重拼接
+drop table if exists sams_data.course_detail;
+create table  sams_data.course_detail as
+select superiorfaculty, superiorfacultycode, xn, xq, kcdm, kcmc, group_concat(distinct xm) as xm_concat
+from sams_data.pjpf_info a1, sams.hr_basic a2
+where  a1.xn>'2014'  and a1.tkdx='本科生' and  a1.rscgh=a2.userid group by superiorfacultycode,kcdm, xn, xq;
+alter table sams_data.course_detail add column year varchar(4) ;
+update sams_data.course_detail set year=substring(xn, 1,4) where xq=1;
+update sams_data.course_detail set year=substring(xn, 1,4)+1 where xq=2 or xq=3;
+
+-- 正教授授课门数详情
+-- 学院代码，学院名称， 课程代码，课程名称，学年，学期，正教授姓名逗号去重拼接
+-- drop table if exists sams_data.course_prof_detail;
+-- create table  sams_data.course_prof_detail as
+-- select superiorfaculty, superiorfacultycode, b2.year, xn, xq, kcdm, kcmc, group_concat(distinct b1.xm) as xm_concat from
+-- (select superiorfaculty, superiorfacultycode, xn, xq, kcdm, kcmc, rscgh, xm
+-- from sams_data.pjpf_info a1, sams.hr_basic a2
+-- where  a1.xn>'2014'  and a1.tkdx='本科生' and a1.rscgh=a2.userid ) b1, sams_data.jg_jbxx_record b2 
+-- where b2.przwm='011' and b1.rscgh=b2.gh  and ( (substring(b1.xn, 1,4)=b2.year and xq=1) or   (substring(b1.xn, 1,4)=b2.year-1 and (xq=2 or xq=3)) ) 
+ -- group by superiorfacultycode,kcdm, xn, xq;
+-- 2021年12月24日调整了生成逻辑
+
+insert into sams_data.course_prof_detail( superiorfaculty, superiorfacultycode, year, xn, xq, kcdm, kcmc, xm_concat)
+select superiorfaculty, b1.superiorfacultycode, b2.year, xn, xq, kcdm, kcmc, group_concat(distinct b1.xm) as xm_concat 
+from
+(select superiorfaculty, superiorfacultycode, xn, xq, kcdm, kcmc, rscgh, xm from sams_data.pjpf_info a1, sams.hr_basic a2 where  a1.xn>'2014'  and a1.tkdx='本科生' and a1.rscgh=a2.userid ) b1, 
+(select userid,name,przwm,print_mc,title_date,zjm,zwzj ,YEAR(NOW()) as year,superiorfacultycode from sams_data.teacher_info_adl t where ((t.rylbm in ('101', '121') and t.jzglbm = '111' and (t.gwm <> '160' or t.gwm is null) and (t.bzm <> '150' or t.bzm is null)) or (t.jzglbm ='150') or (t.rylbm in ('101', '111', '121', '204', '205') and t.jzglbm = '111' and t.bzm = '150')) and t.jzgmblc != '访问教授' and print_mc = '教授') b2
+where b2.przwm='011' and b1.rscgh=b2.userid  and ( (substring(b1.xn, 1,4)=b2.year and xq=1) or   (substring(b1.xn, 1,4)=b2.year-1 and (xq=2 or xq=3)) ) 
+ group by superiorfacultycode,kcdm, xn, xq;
+
+
+-- 正教授总人数详情
+-- 学院代码，学院名称，年度，姓名，工号，职称（即教授）
+-- drop table if exists sams_data.school_prof_detail;
+-- 2021年12月24日调整了生成逻辑
+-- create table sams_data.school_prof_detail as
+-- select a2.superiorfaculty, a2.superiorfacultycode, year, gh, xm, '教授' as title  from (select yxdm, year, gh, xm  from sams_data.jg_jbxx_record where przwm='011' ) a1,  (select distinct 
+-- facultycode, superiorfacultycode, superiorfaculty from sams.hr_basic) a2 where a1.yxdm=a2.facultycode; 
+
+insert into sams_data.school_prof_detail (superiorfaculty, superiorfacultycode, year, gh, xm, title)
+select a2.superiorfaculty, a2.superiorfacultycode, year, gh, xm, '教授' as title  from 
+-- (select yxdm, year, gh, xm  from sams_data.jg_jbxx_record where przwm='011' ) a1,  
+(select yxdm, year, gh, xm  from (select userid as gh,name as xm ,przwm,print_mc as przwmc,title_date as pdny ,zjm,zwzj ,YEAR(NOW()) as year,superiorfacultycode as yxdm from sams_data.teacher_info_adl t where  ((t.rylbm in ('101', '121') and t.jzglbm = '111' and (t.gwm <> '160' or t.gwm is null) and (t.bzm <> '150' or t.bzm is null)) or (t.jzglbm ='150') or (t.rylbm in ('101', '111', '121', '204', '205') and t.jzglbm = '111' and t.bzm = '150')) and t.jzgmblc != '访问教授'
+and print_mc = '教授') a11) a1,
+(select distinct superiorfacultycode, superiorfaculty from sams.hr_basic) a2 
+where a1.yxdm=a2.superiorfacultycode; 
+
+-- 授课正教授人数详情
+-- 学院代码，学院名称，年度，学年，学期，姓名，工号，职称（即教授）
+
+-- drop table if exists sams_data.school_course_prof_detail;
+-- create table sams_data.school_course_prof_detail as
+-- select A.superiorfaculty, A.superiorfacultycode, A.year, B.xn, B.xq, A.gh, A.xm, A.title from (select a2.superiorfaculty, a2.superiorfacultycode, year, gh, xm, '教授' as title  from (select yxdm, year, gh, xm  from sams_data.jg_jbxx_record where przwm='011' ) a1,  (select  facultycode, superiorfacultycode, superiorfaculty from sams.hr_basic group by facultycode) a2 where a1.yxdm=a2.facultycode) A, (select distinct rscgh, xn,xq from sams_data.pjpf_info) B where A.gh=B.rscgh and ((substring(B.xn, 1,4)=A.year and xq=1) or (substring(B.xn, 1,4)=A.year-1 and ( xq=2 or xq=3)) );
+
+
+insert into sams_data.school_course_prof_detail( superiorfaculty, superiorfacultycode, year, xn, xq, gh, xm, title)
+select A.superiorfaculty, A.superiorfacultycode, A.year, B.xn, B.xq, A.gh, A.xm, A.title from 
+(select a2.superiorfaculty, a2.superiorfacultycode, year, gh, xm, '教授' as title  from  
+(select yxdm, year, gh, xm  from (select userid as gh,name as xm ,przwm,print_mc as przwmc,title_date as pdny ,zjm,zwzj ,YEAR(NOW()) as year,superiorfacultycode as yxdm from sams_data.teacher_info_adl t where  ((t.rylbm in ('101', '121') and t.jzglbm = '111' and (t.gwm <> '160' or t.gwm is null) and (t.bzm <> '150' or t.bzm is null)) or (t.jzglbm ='150') or (t.rylbm in ('101', '111', '121', '204', '205') and t.jzglbm = '111' and t.bzm = '150')) and t.jzgmblc != '访问教授'
+and print_mc = '教授') a11) a1,
+(select  facultycode, superiorfacultycode, superiorfaculty from sams.hr_basic group by facultycode) a2 where a1.yxdm=a2.facultycode) A, 
+(select distinct rscgh, xn,xq from sams_data.pjpf_info) B where A.gh=B.rscgh and ((substring(B.xn, 1,4)=A.year and xq=1) or (substring(B.xn, 1,4)=A.year-1 and ( xq=2 or xq=3)) );
+
+END

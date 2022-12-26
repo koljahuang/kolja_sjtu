@@ -1,0 +1,26 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_U_YXKH_calmx`(IN `college_id` VARCHAR(20), IN `taget_id` VARCHAR(50), IN `fq_id` VARCHAR(50), in `zb_code` varchar(20))
+BEGIN
+DECLARE v_result VARCHAR(50);
+	DECLARE v_numerator INT;
+	DECLARE v_denominator INT;
+	CASE zb_code
+	WHEN 'J1' THEN
+	  SELECT COUNT(DISTINCT user_id) INTO v_numerator FROM yxkh_mx_course_professor WHERE id_fq=fq_id AND superiorfacultycode=college_id;
+		SELECT COUNT(id) INTO v_denominator FROM sams_data.teacher_info_adl WHERE superiorfacultycode=college_id AND zwzj='正高';
+		SELECT CONCAT(ROUND((v_numerator/v_denominator)*100,2),'%');
+	WHEN 'J2' THEN
+	  SELECT COUNT(id) INTO v_numerator FROM yxkh_mx_alone_course_professor WHERE id_fq=fq_id AND superiorfacultycode=college_id AND print_mc='正高';
+		SELECT COUNT(id) INTO v_denominator FROM yxkh_mx_alone_course_professor WHERE id_fq=fq_id AND superiorfacultycode=college_id;
+	  SELECT CONCAT(ROUND((v_numerator/v_denominator)*100,2),'%');
+	WHEN 'J3' THEN
+	  SELECT COUNT(DISTINCT user_id) INTO v_numerator FROM yxkh_mx_course_teacher WHERE id_fq=fq_id AND superiorfacultycode=college_id;
+		SELECT COUNT(id) INTO v_denominator FROM sams_data.teacher_info_adl WHERE superiorfacultycode=college_id AND gwm<>'160';
+	  SELECT CONCAT(ROUND((v_numerator/v_denominator)*100,2),'%');
+	WHEN 'J20' THEN
+	  SELECT COUNT(id) INTO v_numerator FROM yxkh_mx_prp WHERE id_fq=fq_id AND superiorfacultycode=college_id;
+		SELECT COUNT(id) INTO v_denominator FROM sams_data.teacher_info_adl WHERE superiorfacultycode=college_id;
+	  SELECT CONCAT(ROUND((v_numerator/v_denominator)*100,2),'%');
+	ELSE
+		SELECT '0';
+  END CASE;
+    END

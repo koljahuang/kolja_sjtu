@@ -1,0 +1,22 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `ZCPD_gh_year`(IN _gh varchar(20))
+BEGIN
+  #Routine body goes here...
+    DECLARE _year_inside varchar(20);
+    DECLARE _year_outside varchar(20);
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+	call ZCPD_YN_New(_gh,_year_inside,_year_outside);
+
+	insert into data_test.cxr_zcpd_gh_yn_1(user_id, year_inside, year_outside) select _gh,_year_inside, _year_outside;
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		#insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Run_2','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+		#insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Run_2','0',now(),'执行成功');
+	END IF;
+
+END

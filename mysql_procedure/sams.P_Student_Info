@@ -1,0 +1,101 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `P_Student_Info`(IN v_year varchar(20))
+BEGIN
+  #Routine body goes here...
+	
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+			-- 在校研究生中间表
+
+			truncate sams_data.YJS_BY_mdl; 
+			insert into sams_data.YJS_BY_mdl(XH,BYSJ)
+			select a.XH,BYSJ
+			from sams_factdata.XS_XSJBK a
+			left join sams_factdata.XS_BY as b
+			on a.XH=b.XH
+			where a.sjly='60300' and (a.LXBJ='0' or a.LXBJ is null) and substring(BYSJ,1,4)>=v_year;  -- 在校研究生中间表
+
+			-- 在校学生信息表
+
+			truncate sams_data.student_info;
+			insert into sams_data.student_info(ID,XSLBDM,XH,XM,XBDM,XBMC,MZDM,MZMC,ZZMMDM,ZZMMMC,JGDM,JGMCXX,JGMC,GBDM,GBMC,PYFSDM,PYFSMC,YXSH,YXSHMC,ZYH,ZYMC,SJLY,LXQK,HYZKDM,HYZK,XJZTMX,XJZT,RXNJ,LXBJ,LXZT)
+			select uuid(),XSLBDM,a.XH,XM,XBDM,b.C_NAME as XBMC,MZDM,c.C_NAME as MZMC,ZZMMDM,d.C_NAME as ZZMMMC,JGDM,e.MC as JGMCXX,f.mc as JGMC,
+			GBDM,g.C_NAME as GBMC,PYFSDM,h.C_NAME  as PYFSMC,i.parent1_c_id  as YXDM,i.C_NAME  as YXMC,ZYH,j.C_NAME as ZYMC,a.SJLY,TJ,HYZKDM,
+			k.mc as HYZK,XJZTMX,case when a.SJLY='60200' then l2.C_NAME when a.SJLY='60300' then l1.C_NAME end as XJZT,substring(m.RXNJ,1,4) as NJ,'Y' TJ ,'0' lxbj
+			from sams_factdata.XS_XSJBK a
+			left join sams_factdata.dm_xb b on b.C_ID = a.XBDM
+			left join sams_factdata.dm_zgmzmc c on c.C_ID = a.MZDM
+			left join sams_factdata.dm_zzmm d on d.C_ID = a.ZZMMDM
+			left join sams_factdata.DM_GB2260 e on e.dm = a.JGDM
+			left join sams_factdata.DM_GB2260 f on f.dm = concat(substring(a.JGDM,1,2),'0000')
+			left join sams_factdata.dm_gjdqmc g on g.C_ID = a.GBDM
+			left join sams_factdata.DM_PYFS h on h.C_ID=a.PYFSDM
+			left join  sams_factdata.v_dm_bm i on i.C_ID=a.GLYX
+			left join  sams_factdata.DM_ZYB_ALL j on j.C_ID = a.ZYH and j.SJLY=a.SJLY
+			left join  sams_factdata.DM_GB4766 k on k.dm=a.HYZKDM
+			-- left join  sams_factdata.DM_XJYDLB l on l.C_ID=a.XJZTMX			
+			left join  sams_factdata.DM_XJZT_YJS l1 on l1.C_ID=a.XJZTMX 
+			left join  sams_factdata.DM_XJZTMX l2 on l2.C_ID=a.XJZTMX					
+			left join  sams_factdata.XS_KSLQ m on m.XH=a.XH
+      left join sams_factdata.XS_BY n on a.XH=n.XH
+			where (a.SJLY='60200' and a.TJ='Y') or (a.SJLY='60300' and a.lxbj='0' and ifnull(BYSJ,yjbysj)>now());
+
+			-- 学生数目表
+
+			truncate sams_data.student_number;
+			insert into sams_data.student_number(id,yxsh,yxmc,zyh,zymc,bksnum,yjsnum,shsnum,bsnum)
+			select 0,yxsh,
+			(select C_NAME as yxmc from sams_factdata.YXDMK b where b.C_ID = a.YXSH) as yxmc,
+			zyh,
+			(select C_NAME as zymc from sams_factdata.DM_ZYB_ALL b where b.C_ID = a.ZYH and b.SJLY=a.SJLY) as zymc,
+			count(distinct case when SJLY = '60200' then XH end) as bksnum,
+			count(distinct case when SJLY = '60300' then XH end) as yjsnum,
+			count(distinct case when SJLY='60300' and XSLBDM like '2%' then XH end) as shsnum,
+			count(distinct case when SJLY='60300' and XSLBDM like '3%' then XH end) as bsnum
+			from sams_data.student_info a
+			group by yxsh,zyh;  
+
+			-- 学生汇总信息表，此表目前没用到
+
+			truncate sams_data.student_huizong;
+			insert into sams_data.student_huizong(id,type,YXSH,YXSHMC,LXDM,LXMC,RXNJ,LXBJ,SJLY,maleNum,femaleNum)
+			select uuid(),'1' as type,YXSH,YXSHMC,ZYH,ZYMC,substring(RXNJ,1,4),LXBJ,SJLY,
+			count(distinct case when XBDM='1' then XH end) as male,
+			count(distinct case when XBDM='2' then XH end) as female
+			from sams_data.student_info 
+			group by YXSH,YXSHMC,ZYH,ZYMC,substring(RXNJ,1,4),LXBJ,SJLY
+			union
+			select uuid(),'2' as type,YXSH,YXSHMC,MZDM,MZMC,substring(RXNJ,1,4),LXBJ,SJLY,
+			count(distinct case when XBDM='1' then XH end) as male,
+			count(distinct case when XBDM='2' then XH end) as female
+			from sams_data.student_info
+			group by YXSH,YXSHMC,MZDM,MZMC,substring(RXNJ,1,4),LXBJ,SJLY
+			union
+			select uuid(),'3' as type,YXSH,YXSHMC,ZZMMDM,ZZMMMC,substring(RXNJ,1,4),LXBJ,SJLY,
+			count( distinct case when XBDM='1' then XH end) as male,
+			count( distinct case when XBDM='2' then XH end) as female
+			from sams_data.student_info
+			group by YXSH,YXSHMC,ZZMMDM,ZZMMMC,substring(RXNJ,1,4),LXBJ,SJLY
+			union
+			select uuid(),'4' as type,YXSH,YXSHMC,GBDM,GBMC,substring(RXNJ,1,4),LXBJ,SJLY,
+			count(distinct case when XBDM='1' then XH end) as male,
+			count(distinct case when XBDM='2' then XH end) as female
+			from sams_data.student_info
+			group by YXSH,YXSHMC,GBDM,GBMC,substring(RXNJ,1,4),LXBJ,SJLY
+			union
+			select uuid(),'5' as type,YXSH,YXSHMC,JGDM,JGMC,substring(RXNJ,1,4),LXBJ,SJLY,
+			count(distinct case when XBDM='1' then XH end) as male,
+			count(distinct case when XBDM='2' then XH end) as female
+			from sams_data.student_info
+			group by YXSH,YXSHMC,JGDM,JGMC,substring(RXNJ,1,4),LXBJ,SJLY;
+		
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('11','P_Student_Info','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('11','P_Student_Info','0',now(),'执行成功');
+	END IF;		
+			
+END

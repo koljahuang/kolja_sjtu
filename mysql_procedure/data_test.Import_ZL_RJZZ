@@ -1,0 +1,60 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Import_ZL_RJZZ`()
+BEGIN
+  #Routine body goes here...
+	
+		insert into data_test.sr_patent (id,gh,zlmc,zlzz,zlh,sqdw,sqny,zljsm,qr,pm,zllbm,sqh,sygjm,gkrq,sqzt,shouqrq,nation,SJLY,SchoolNo,AgencyNo,Agency,inventor_finisher,create_timestamp,
+		update_timestamp,scbj,bz,inventor,qrbz)
+		select distinct null id, B.userid gh,`专利名称` zlmc,case when `专利类型`='实用新型' then '2' else '1' end as zlzz,`申请号` zlh,`当前申请人/权利人` sqdw,`申请日` sqny,'510' zljsm,'2' qr,null pm,case when `专利类型`='实用新型' then '2' else '1' end as zllbm,`授权号` sqh,'156' sygjm,`公开日` gkrq,case when A.法律状态 in('授权通知','转让','终止','授权公告') then '是' else '否' end sqzt,`授权日` shouqrq,'中国' nation,'匹配姓名' SJLY,`学校编号` SchoolNo,`事务所编号` AgencyNo,`代理机构` Agency, `发明人` inventor_finisher,now() create_timestamp,now() update_timestamp,'N' scbj,`法律状态` bz,`发明人` inventor,B.name_cert
+		from data_test.QK_ZL_20191023_2  A
+		inner join sams.hr_basic B on instr(A.`发明人` ,B.name_cert)>0  and B.usertype='C' 
+		where B.superiorfacultycode='43000' or (B.superiorfacultycode='01000' and A.`所属院系`!='船舶海洋与建筑工程学院' );
+
+
+		update sams_factdata.sr_patent A
+		inner join data_test.QK_ZL_20191023_2 B on  B.`申请号`=A.zlh and B.`授权号`=A.sqh
+		inner join sams.hr_basic C on A.gh=C.userid and C.usertype='C' 
+		set A.scbj='Y'
+		where sjly='匹配姓名' and C.superiorfacultycode='01000' and `所属院系`!='船舶海洋与建筑工程学院';
+
+		update sams_factdata.sr_patent A 
+		set scbj='Y',sjly='匹配姓名错误' 
+		where sjly='匹配姓名'  
+		and inventor_finisher not like CONCAT(qrbz,', %')
+		and inventor_finisher not like CONCAT(qrbz,'[%') 
+		and inventor_finisher!=qrbz
+		and inventor_finisher not like CONCAT('%, ',qrbz,'%');
+
+		delete from  sams_factdata.sr_patent  where sjly='匹配姓名错误';
+
+		insert into sams_factdata.sr_patent
+		select * from  data_test.sr_patent A
+		where not exists (select * from  sams_factdata.sr_patent AA where AA.gh=A.gh and (A.zlh=AA.zlh or A.sqh=AA.sqh));
+
+	
+	-- 软件著作
+		insert into data_test.award_software_info ( `rjmc`, `rjjc`, `zzqr`, `sqrq`, `xxbh`, `swsbh`, `zsbh`, `createtime`,  `updatetime`) 
+		select distinct  A.`软件名称`,A.`软件简称`,A.`著作权人`,A.`证书发文日`,A.`学校编号`,A.`事务所编号`,A.`证书号`,now(),now()  from QK_RJZZ_20191114 A
+		inner join sams.hr_basic B on instr(A.`开发人员` ,B.name_cert)>0 and B.superiorfacultycode in ('43000') and B.usertype='C' ;
+
+		insert into data_test.award_software_info ( `rjmc`, `rjjc`, `zzqr`, `sqrq`, `xxbh`, `swsbh`, `zsbh`, `createtime`,  `updatetime`) 
+		select distinct  A.`软件名称`,A.`软件简称`,A.`著作权人`,A.`证书发文日`,A.`学校编号`,A.`事务所编号`,A.`证书号`,now(),now()  from QK_RJZZ_20191114 A
+		inner join sams.hr_basic B on instr(A.`开发人员` ,B.name_cert)>0 and B.superiorfacultycode in ('01000') and B.usertype='C'  and A.`所属学院`='船舶海洋与建筑工程学院';
+
+		update data_test.award_software_info set id=uuid();
+
+
+		INSERT INTO `data_test`.`award_stuff`(`id`, `jlid`, `gh`, `xm`, `superfacultycode`, `facultycode`, `xh`, `percent`) 
+		select uuid(),AA.id,B.userid,B.name_cert,B.superiorfacultycode,B.facultycode, NULL, NULL from data_test.award_software_info  AA
+		inner join  data_test.QK_RJZZ_20191114 A on A.学校编号=AA.xxbh and A.`证书号`=AA.`zsbh`
+		inner join sams.hr_basic B on instr(A.`开发人员` ,B.name_cert)>0 and B.usertype='C'  
+		where (B.superiorfacultycode in ('01000')  and  A.`所属学院`='船舶海洋与建筑工程学院' ) or B.superiorfacultycode in ('43000');
+
+		insert into sams_factdata.award_stuff
+		select * from data_test.award_stuff;
+
+
+		insert into sams_factdata.award_software_info
+		select * from data_test.award_software_info;
+
+
+END

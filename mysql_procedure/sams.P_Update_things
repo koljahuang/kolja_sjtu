@@ -1,0 +1,20 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Update_things`()
+BEGIN
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+	-- 电院郑晓冬到账数据更新
+	update sams_factdata.T_KY_ALLOCATE
+	set charge_sno='11473'
+	where charge_sno='19646' and charge_name='郑晓冬' and SA_DEPART='030';
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Update_things','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Update_things','0',now(),'执行成功');
+	END IF;	
+
+END

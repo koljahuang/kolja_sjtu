@@ -1,0 +1,157 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Verify_sr_honor`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断人事处荣誉表是否有更新信息
+	if ((select count(*)
+	    from data_test.qk_once_rych
+	    where updatetime>concat(curdate(),' 00:00:00') and updatetime<current_timestamp)=0) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+   		    insert into data_test.cxr_T_record  (Module_ID,Module_Name,Type,Record_Time,Remark) values ('18','Verify_sr_honor','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+   		    insert into data_test.cxr_T_record  (Module_ID,Module_Name,Type,Record_Time,Remark) values ('18','Verify_sr_honor','0',now(),'执行成功，无更新内容');
+		END IF;
+    else
+
+        create temporary table sams_factdata.sr_honor_temp like sams_factdata.sr_honor;
+
+        ############  向临时表中导入更新内容
+        insert into sams_factdata.sr_honor_temp(id, superiorfacultycode, superiorfaculty,
+                                                facultycode, faculty, user_id, user_name,
+                                                honor_rank, honor_type, honor_level, honor_name,
+                                                grant_date, grant_org, remark, is_inserted_by_teacher,
+                                                status, creator, honor_kind, ranking)
+        select uuid() as id,
+               b.superiorfacultycode,
+               b.superiorfaculty,
+               b.facultycode,
+               b.faculty,
+               a.gh as user_id,
+               b.name_cert as user_name,
+               c.mc as honor_rank,
+               a.mc as honor_type,
+               a.jxdd as honor_level,
+               if(a.jlrymc is null or a.jlrymc='', a.bz,a.jlrymc) as honor_name,
+               substring_index(substring_index(replace(replace(replace(a.hryny,'、','-'),'.','-'),'，',','),'-',2),',',1) as grant_date,
+               a.bfdw as grant_org,
+               a.bz as remark,
+               'R' as is_inserted_by_teacher,
+               if(substring_index(group_concat(qr order by qr desc),',',1)='2','66','77') as status,
+               a.Manager as creator,
+               a.Grjtry,
+               a.Jtrypm
+               from data_test.qk_once_rych a
+        inner join (select * from sams.hr_basic where usertype='C') b
+        on a.gh=b.userid
+        inner join sams_factdata.DM_GB8560 c
+        on substring(rychm,1,1)=c.dm
+        where a.rychm<>'no' and a.rychm<>'' and a.rychm is not null and a.bz<>'SA提交数据'
+          and a.updatetime>concat(curdate(),' 00:00:00') and
+              a.updatetime<current_timestamp
+              # a.updatetime> date_sub(current_timestamp, interval 1 hour)and a.updatetime<current_timestamp 也可以缩小时间区间
+        group by a.gh,a.hryny,if(a.jlrymc is null or a.jlrymc='',a.mc,a.jlrymc);
+
+
+
+        update sams_factdata.sr_honor_temp set grant_date=(case length(grant_date)
+            when 6 then if(substring(grant_date,5,1)='-',replace(grant_date,'-','-0'),concat(substring(grant_date,1,4),'-',substring(grant_date,5,2)))
+            when 11 then substring(grant_date,1,4)
+            when 8 then replace(grant_date,'-0','-')
+            else grant_date
+            end)
+        where length(grant_date) not in (4,7,10);
+
+        update sams_factdata.sr_honor as A
+        inner join sams_factdata.sr_honor_temp as B
+        on A.user_id=B.user_id and ifnull(A.grant_date,'')=ifnull(B.grant_date,'') and if(A.honor_name is null or A.honor_name='',
+            ifnull(A.honor_type,''),A.honor_name)=if(A.honor_name is null or A.honor_name='',
+                ifnull(B.honor_type,''),ifnull(B.honor_name,''))
+        set A.honor_rank=B.honor_rank,
+            A.honor_type=B.honor_type,
+            A.honor_level=B.honor_level,
+            A.honor_name=B.honor_name,
+            A.grant_org=B.grant_org,
+            A.grant_date=B.grant_date,
+            A.remark=B.remark,
+            A.creator=B.creator,
+            A.honor_kind=B.honor_kind,
+            A.ranking=B.ranking,
+            A.status=B.status
+        where A.is_inserted_by_teacher='R' and A.scbj='N';
+
+        #########  先插入日志，再导入新增
+        insert into sams.sys_datalog(id, datakeyid, logtype, datatype, name, updatecontent)
+        select uuid() as id,
+               id as datakeyid,
+               '同步' as logtype,
+               '荣誉信息' as datatype,
+               '人力资源处' as name,
+               '新增' as updatecontent
+        from sams_factdata.sr_honor_temp
+        where not exists(
+            select * from sams_factdata.sr_honor A
+            where A.is_inserted_by_teacher='R' and sams_factdata.sr_honor_temp.user_id=A.user_id and ifnull(A.grant_date,'')=ifnull(sams_factdata.sr_honor_temp.grant_date,'')
+              and if(A.honor_name is null or A.honor_name='', ifnull(A.honor_type,''),A.honor_name)=if(A.honor_name is null or A.honor_name='',
+                ifnull(sams_factdata.sr_honor_temp.honor_type,''),ifnull(sams_factdata.sr_honor_temp.honor_name,''))
+            ) and status='66';
+
+        insert into sams_factdata.sr_honor(id, superiorfacultycode, superiorfaculty, facultycode,
+                                           faculty, user_id, user_name, honor_rank, honor_type,
+                                           honor_level, honor_name, grant_date, grant_org, remark,
+                                           file_name, file_url, file_binary, scbj, is_inserted_by_teacher,
+                                           status, comment, creator, createtime, updatetime, honor_kind, ranking)
+        select id, superiorfacultycode, superiorfaculty, facultycode,
+                                           faculty, user_id, user_name, honor_rank, honor_type,
+                                           honor_level, honor_name, grant_date, grant_org, remark,
+                                           file_name, file_url, file_binary, scbj, is_inserted_by_teacher,
+                                           status, comment, creator, createtime, updatetime, honor_kind, ranking
+        from sams_factdata.sr_honor_temp
+        where not exists(
+            select * from sams_factdata.sr_honor A
+            where A.is_inserted_by_teacher='R'
+              and sams_factdata.sr_honor_temp.user_id=A.user_id
+              and ifnull(A.grant_date,'')=ifnull(sams_factdata.sr_honor_temp.grant_date,'')
+              and if(A.honor_name is null or A.honor_name='', ifnull(A.honor_type,''),A.honor_name)=if(A.honor_name is null or A.honor_name='',
+                ifnull(sams_factdata.sr_honor_temp.honor_type,''),ifnull(sams_factdata.sr_honor_temp.honor_name,''))
+            ) and status='66';
+
+        ##########   更新人力资源处审核的数据
+        insert into sams.sys_datalog(id, datakeyid, logtype, datatype, name, updatecontent)
+        select uuid() as id,
+               a.id as datakeyid,
+               '同步' as logtype,
+               '荣誉信息' as datatype,
+               '人力资源处' as name,
+               if(a.qr='2','人力资源处审核通过',concat('人力资源处审核未通过，',QrBZ)) as updatecontent
+        from data_test.qk_once_rych a
+        inner join sams_factdata.sr_honor b
+        on a.id=b.id
+        where b.status='77' and a.updatetime> date_sub(current_timestamp, interval 1 hour)and a.updatetime<current_timestamp
+        and a.id is not null;
+
+        update sams_factdata.sr_honor a
+        inner join (select * from data_test.qk_once_rych where id is not null) b
+        on a.id=b.id and b.updatetime> date_sub(current_timestamp, interval 1 hour)and b.updatetime<current_timestamp
+        set a.status=(case when b.qr='2' then'66'
+					when b.qr='1' then '77'
+					else '-1' end),
+            a.comment=b.QrBZ
+        where a.status='77';
+
+
+
+        drop table sams_factdata.sr_honor_temp;
+
+	    IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('18','Verify_sr_honor','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('18','Verify_sr_honor','0',now(),'执行成功');
+	    END IF;
+    end if ;
+END

@@ -1,0 +1,21 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `SA_HR_Everyday_event`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+    call Update_SA_HR_KYXM();
+    call Update_SA_HR_JKQK();
+	call Update_SA_HR_ZL_ZZ_SHXSJZ();
+	call Update_SA_HR_ZDYJSK();
+	call P_teaching_sa();
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('25','SA_HR_Everyday_event','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('25','SA_HR_Everyday_event','0',now(),'执行成功');
+	END IF;
+END

@@ -1,0 +1,47 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_BYSJ`()
+BEGIN
+#Routine body goes here...
+
+		update JX_BYSJ set dlzd=1 where id not in (select projid from JX_BYSJ_SUB where zdtype='辅指导');
+
+		update JX_BYSJ set dlzd=0 where id in (select projid from JX_BYSJ_SUB where zdtype='辅指导');
+
+		update JX_BYSJ A
+		inner join sams_factdata.XS_XSJBK B on A.stuno=B.xh
+		set A.stusuperiorfacultycode=B.GLYX,A.stugrade=B.NJ;
+
+
+
+		update JX_BYSJ_SUB A
+		inner join sams.hr_basic B on A.userid=B.userid and B.usertype='C'
+		set A.superiorfacultycode=B.superiorfacultycode,A.superiorfaculty=B.superiorfaculty,A.faculty=B.faculty,A.facultycode=B.facultycode,percent=100.00;
+
+		update JX_BYSJ_SUB set  percent=100.00;
+
+		update JX_BYSJ_SUB set  percent='0.00' where projid in (select projid from JX_BYSJ_SUB where zdtype='辅指导');
+
+		update JX_BYSJ_SUB set id=REPLACE(REPLACE(id,'{',''),'}','');
+
+		update JX_BYSJ A 
+		inner join (select  projid,group_concat(teachername) name from JX_BYSJ_SUB group by projid ) B on A.id=B.projid
+		set A.teacherinfo=B.name;
+		
+		-- INSERT INTO `sams_factdata`.`JX_UNDERTAKING`(`id`, `projectid`, `userid`, `facultycode`, `faculty`, `superfacultycode`, `superfaculty`, `startdate`, `enddate`, `projname`, `qs`, `status`, `studentnums`, `studentnames`, `projscore`, `type`, `createdate`, `updatedate`, `scbj`) 
+		select uuid(),projectid,userid,B.facultycode,B.faculty,B.superiorfacultycode,B.superiorfaculty,A.PlanBeginTime,A.PlanEndTime,A.ProjectName,A.qs,A.projectstate,A.studentnum,A.studentsinfo,A.finalscore,A.ProjectType,now(),now(),'N'
+		from vwPPAadvisor A
+		inner join sams.hr_basic B on A.rscgh=B.userid and B.USERTYPE='C'
+		where rscgh='09821';
+
+
+		update JX_UNDERTAKING A
+		inner join  vwPPAadvisor B on A.projectid=B.projectid and A.userid=B.rscgh
+		set A.studentnums=B.studentnum,A.studentnames=B.studentsinfo
+		where B.ProjectType in ('上海市级创新实践','国家级创新实践','本科生暑期科研见习岗位','校级创新实践');
+		
+		insert into sams_factdata.JX_GRDRK
+select distinct B.bsid,B.rscgh,B.tkdx,B.KCXZ,A.`个人实际承担学时`,A.`总学分`*A.`个人实际承担学时`/A.`总学时` grxf,A.`授课语言`,null ssrs,null bsrs,'批量导入' bz,'' sfzxfd,'' sfsjlkc,'' sfzyrykc,A.`是否独立授课` from sams_factdata.BK_KCDR1 A
+inner join sams_data.pjpf_info B  on A.`工号`=B.rscgh and A.`课号`=B.kh;
+
+
+
+END

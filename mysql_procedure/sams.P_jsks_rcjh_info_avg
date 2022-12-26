@@ -1,0 +1,9 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_jsks_rcjh_info_avg`(IN v_xn varchar(10),IN v_xq tinyint)
+BEGIN
+insert into  sams_data.jsks_rcjh_info_avg
+SELECT uuid,gh,name,faculty,facultycode,superiorfaculty,superiorfacultycode,xn,xq,tkdx,tkrs,gender,print_mc,bzmc,age,typeName,TalentTypeAbbr,levelsName, round(xqxss/B.num) xqxss, round(totalxss/B.num) totalxss,ktxs,syxs,qtxs,pjf,isvalid,kcdm,kcmc,kh,bj,updateDate,A.bsid FROM (SELECT uuid,gh,name,faculty,facultycode,superiorfaculty,superiorfacultycode,xn,xq,tkdx,tkrs,gender,print_mc,bzmc,age,typeName,TalentTypeAbbr,levelsName,xqxss,totalxss,ktxs,syxs,qtxs,pjf,isvalid,kcdm,kcmc,kh,bj,updateDate,bsid FROM sams_data.jsks_rcjh_info where tkdx='本科生' and xn=v_xn and xq=v_xq) A inner join (SELECT bsid, count(distinct(gh)) num FROM sams_data.jsks_rcjh_info where xn=v_xn and xq=v_xq and tkdx='本科生' group by bsid) B ON A.bsid=B.bsid;  
+
+insert into  sams_data.jsks_rcjh_info_avg
+SELECT uuid,gh,name,faculty,facultycode,superiorfaculty,superiorfacultycode,xn,xq,tkdx,tkrs,gender,print_mc,bzmc,age,typeName,TalentTypeAbbr,levelsName, round(xqxss/B.num) xqxss, round(totalxss/B.num) totalxss,ktxs,syxs,qtxs,pjf,isvalid,kcdm,kcmc,kh,A.bj,updateDate,A.bsid FROM (SELECT uuid,gh,name,faculty,facultycode,superiorfaculty,superiorfacultycode,xn,xq,tkdx,tkrs,gender,print_mc,bzmc,age,typeName,TalentTypeAbbr,levelsName,xqxss,totalxss,ktxs,syxs,qtxs,pjf,isvalid,kcdm,kcmc,kh,bj,updateDate,bsid FROM sams_data.jsks_rcjh_info where tkdx='研究生' and xn=v_xn and xq=v_xq) A inner join (SELECT bj, count(distinct(gh)) num FROM sams_data.jsks_rcjh_info where xn=v_xn and xq=v_xq and tkdx='研究生' group by bsid) B ON A.bj=B.bj; 
+
+END

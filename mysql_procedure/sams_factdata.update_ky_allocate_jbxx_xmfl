@@ -1,0 +1,14 @@
+CREATE DEFINER=`sams`@`sams-%` PROCEDURE `update_ky_allocate_jbxx_xmfl`(IN v_xmbh varchar(50), IN v_gh varchar(50),
+                                                                        IN v_xmfl varchar(1000))
+BEGIN
+	-- 更新zkt_cw_fp的项目分类
+	UPDATE sams_data.`zkt_cw_fp` SET xmfl = v_xmfl WHERE xmbh = v_xmbh AND p_gh = v_gh;
+
+    UPDATE sams_data.`zkt_cw_show` SET xmfl = v_xmfl WHERE xmbh = v_xmbh AND fzrgh = v_gh;
+
+	-- 更新zkt_cw_info的项目分类
+	UPDATE sams_data.`zkt_cw_info` SET xmfl = v_xmfl WHERE xmbh= v_xmbh AND gh = v_gh;
+
+	-- 更新zkt_cwhz的项目分类
+	UPDATE sams_data.`zkt_cwhz` SET xmfl = v_xmfl WHERE xmbh = v_xmbh AND gh = v_gh;
+    END

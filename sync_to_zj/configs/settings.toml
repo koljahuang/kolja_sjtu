@@ -1,0 +1,4 @@
+[prod]
+
+LOG_NAME = 'syncToZJ'
+LOG_LEVEL = 'DEBUG'

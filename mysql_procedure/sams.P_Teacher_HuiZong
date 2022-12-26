@@ -1,0 +1,263 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Teacher_HuiZong`(IN `v_year` varchar(20) )
+BEGIN
+	#Routine body goes here...
+
+		DECLARE EXCEPTION INT DEFAULT 0;
+		DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+		START TRANSACTION;
+		
+			-- 以系主任角色，按照各种业务需求统计教师数量，不包括人员类别码为4，6，7，8的教职工
+
+			truncate sams_data.teacher_datapool_adl;
+			insert into sams_data.teacher_datapool_adl(
+			faculty,facultycode,superiorfacultycode,superiorfaculty,doctor_num,master_num,bachelor_num,sybz_num,ldpy_num,rcpq_num,xmpy_num,man_num,woman_num,agel30_num,ageme30_num,ageme40_num
+			,ageme50_num,ageme60_num,wl2_num,wme2_num,wme5_num,wme10_num,lxhg_num,hz_num,shmz_num,wj_num,szyj_num,bsh_num,glwy_num,jfqt_num,xmpy1_num,syld_num,pqry_num,cptx_num,rxpy_num,wgwj_num
+			,bgjz_num,cn_num,gat_num,wg_num,zg_num,fg_num,zj_num,zjyx_num,total_num,otherpy_num,szyj_lxhg_num,szyj_jw_num,updateDate)
+			select faculty,facultycode,superiorfacultycode,superiorfaculty,
+			count(distinct case when xwmc like '%博士%' then userid end) as doctor_num,
+			count(distinct case when xwmc like '%硕士%' then userid end) as master_num,
+			count(distinct case when xwmc like '%学士%' then userid end) as bachelor_num,
+			count(distinct case when rylbmc like '事业编制%' then userid end) as sybz_num,
+			count(distinct case when rylbmc = '劳动聘用' then userid end) as ldpy_num,
+			count(distinct case when rylbmc like  '人才派遣%' then userid end) as rcpq_num,
+			count(distinct case when rylbmc like  '项目聘用%' then userid end) as xmpy_num,
+			count(distinct case when gender != '女性' then userid end) as man_num,
+			count(distinct case when gender = '女性' then userid end) as woman_num,
+			count(distinct case when ('2020'- cast(substring(birthdate,1,4) as int)<30) or birthdate is null then userid end) as agel30_num,
+			count(distinct case when '2020'- cast(substring(birthdate,1,4) as int)>=30 and '2020'- cast(substring(birthdate,1,4) as int)<40 then userid end) as ageme30_num,
+			count(distinct case when '2020'- cast(substring(birthdate,1,4) as int)>=40 and '2020'- cast(substring(birthdate,1,4) as int)<50 then userid end) as ageme40_num,
+			count(distinct case when '2020'- cast(substring(birthdate,1,4) as int)>=50 and '2020'- cast(substring(birthdate,1,4) as int)<60 then userid end) as ageme50_num,
+			count(distinct case when '2020'- cast(substring(birthdate,1,4) as int)>=60 then userid end) as ageme60_num,
+			count(distinct case when length(schoolym)>0 and ('2020'- cast(substring(schoolym,1,4) as int)<2 )  then userid end) as wl2_num,
+			count(distinct case when length(schoolym)>0 and ('2020'- cast(substring(schoolym,1,4) as int)>=2  and '2020' - cast(substring(schoolym,1,4) as int)<5 ) then userid end) as wme2_num,
+			count(distinct case when length(schoolym)>0 and ('2020' - cast(substring(schoolym,1,4) as int)>=5 and '2020' - cast(substring(schoolym,1,4) as int)<10)   then userid end) as wme5_num,
+			count(distinct case when length(schoolym)>0 and ('2020' - cast(substring(schoolym,1,4) as int)>=10 )  then userid end) as wme10_num,
+			count(distinct case when lxhg='是' then userid end) as lxhg_num,
+			count(distinct case when mzdm='01' then userid end) as hz_num,
+			count(distinct case when mzdm not in ('01','97','98','99') then userid end) as shmz_num,
+			count(distinct case when mzdm in ('97','98','99') then userid end) as wj_num,
+			count(distinct case when ((rylbm in ('101', '121') and jzglbm = '111' and (gwm <> '160' or gwm is null)) or (jzglbm ='150')) then userid end) as szyj_num,
+			count(distinct case when rylbm like '8%' then userid end) as bsh_num,
+			count(distinct case when rylbm in ('101','111','121','204','205') and (jzglbm in ('112') or (gwm='131')) then userid end) as glwy_num,
+			count(distinct case when rylbm in ('101','111','121','204','205') and (jzglbm in ('114','115','116','117','118','119') and (gwm<>'131' or gwm is null)) then userid end) as jfqt_num,
+			count(distinct case when rylbm  in ('400','401','402','403') then userid end) as xmpy1_num,
+			count(distinct case when pyht in ('事业编制聘用合同','劳动聘用合同') then userid end) as syld_num,
+			count(distinct case when pyht like '派遣人员劳动合同%' then userid end) as pqry_num,
+			count(distinct case when pyht  like '长聘体系%' then userid end) as cptx_num,
+			count(distinct case when pyht like '柔性聘用%' then userid end) as rxpy_num,
+			count(distinct case when pyht  like '外国文教%' then userid end) as wgwj_num,
+			count(distinct case when pyht  in ('变更协议','兼职聘用协议') then userid end) as bgjz_num,
+			count(distinct case when GJM ='CN' then userid end) as cn_num,
+			count(distinct case when GJM in ('TW','MO','HK') then userid end) as gat_num,
+			count(distinct case when GJM not in ('CN','TW','MO','HK') then userid end) as wg_num,
+			count(distinct case when ZJM ='1' then userid end) as zg_num,
+			count(distinct case when ZJM ='2' then userid end) as fg_num,
+			count(distinct case when ZJM ='3' then userid end) as zj_num,
+			count(distinct case when ZJM ='4' then userid end) as zjyx_num,
+			count(distinct userid ) as total_num,
+			count(distinct case when rylbm not in ('101','111','121','204','205')  then userid end) as otherpy_num,
+			count(distinct case when 	((rylbm in ('101', '121') and jzglbm = '111' and (gwm <> '160' or gwm is null)) or (jzglbm ='150'))
+			and lxhg='是' then userid end) as szyj_lxhg_num,
+			count(distinct case when ((rylbm in ('101', '121') and jzglbm = '111' and (gwm <> '160' or gwm is null)) or (jzglbm ='150'))
+			and GJM not in ('CN') then userid end) as szyj_jw_num,
+			curdate()
+			from sams_data.teacher_info_adl
+			group by facultycode,superiorfacultycode;
+			
+			-- 以院长角色，统计不同需求的教师数量，人员类别码4，6，7，8的不包括
+			
+			truncate sams_data.teacher_datapool_yz_adl;
+			insert into sams_data.teacher_datapool_yz_adl (
+			superiorfacultycode,superiorfaculty,doctor_num,master_num,bachelor_num,sybz_num,ldpy_num,rcpq_num,xmpy_num,man_num,woman_num,agel30_num,ageme30_num
+			,ageme40_num,ageme50_num,ageme60_num,wl2_num,wme2_num,wme5_num,wme10_num,lxhg_num,hz_num,shmz_num,wj_num,szyj_num,bsh_num,glwy_num,jfqt_num,xmpy1_num
+			,syld_num,pqry_num,cptx_num,rxpy_num,wgwj_num,bgjz_num,cn_num,gat_num,wg_num,zg_num,fg_num,zj_num,zjyx_num,total_num,otherpy_num,szyj_lxhg_num,szyj_jw_num,updateDate)
+			select superiorfacultycode,superiorfaculty,
+			count(distinct case when xwmc like '%博士%' then userid end) as doctor_num,
+			count(distinct case when xwmc like '%硕士%' then userid end) as master_num,
+			count(distinct case when xwmc like '%学士%' then userid end) as bachelor_num,
+			count(distinct case when rylbmc like '事业编制%' then userid end) as sybz_num,
+			count(distinct case when rylbmc = '劳动聘用' then userid end) as ldpy_num,
+			count(distinct case when rylbmc like  '人才派遣%' then userid end) as rcpq_num,
+			count(distinct case when rylbmc like  '项目聘用%' then userid end) as xmpy_num,
+			count(distinct case when gender != '女性' then userid end) as man_num,
+			count(distinct case when gender = '女性' then userid end) as woman_num,
+			count(distinct case when (v_year- cast(substring(birthdate,1,4) as int)<30) or birthdate is null then userid end) as agel30_num,
+			count(distinct case when v_year- cast(substring(birthdate,1,4) as int)>=30 and v_year- cast(substring(birthdate,1,4) as int)<40 then userid end) as ageme30_num,
+			count(distinct case when v_year- cast(substring(birthdate,1,4) as int)>=40 and v_year- cast(substring(birthdate,1,4) as int)<50 then userid end) as ageme40_num,
+			count(distinct case when v_year- cast(substring(birthdate,1,4) as int)>=50 and v_year- cast(substring(birthdate,1,4) as int)<60 then userid end) as ageme50_num,
+			count(distinct case when v_year- cast(substring(birthdate,1,4) as int)>=60 then userid end) as ageme60_num,
+			count(distinct case when length(schoolym)>0 and (v_year - cast(substring(schoolym,1,4) as int)<2 )  then userid end) as wl2_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=2  and v_year- cast(substring(schoolym,1,4) as int)<5 ) then userid end) as wme2_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=5 and v_year- cast(substring(schoolym,1,4) as int)<10)   then userid end) as wme5_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=10 )  then userid end) as wme10_num,
+			count(distinct case when lxhg='是' then userid end) as lxhg_num,
+			count(distinct case when mzdm='01' then userid end) as hz_num,
+			count(distinct case when mzdm not in ('01','91','97','98','99') then userid end) as shmz_num,
+			count(distinct case when mzdm in ('97','98','99') then userid end) as wj_num,
+			count(distinct case when rylbm not in ('400','401','402','403') and jzglbm='111' then userid end) as szyj_num,
+			count(distinct case when  rylbm not in ('400','401','402','403') and rylbm like '8%' then userid end) as bsh_num,
+			count(distinct case when rylbm not in ('400','401','402','403') and (jzglbm in ('112') or (rylbm in ('205','111') and jzglbm='119' and bzm in ('130','131'))) then userid end) as glwy_num,
+			count(distinct case when rylbm not in ('400','401','402','403') and ((jzglbm='119' and rylbm='300') or jzglbm not in ('111','130','112','119')) then userid end) as jfqt_num,
+			count(distinct case when rylbm  in ('400','401','402','403') then userid end) as xmpy1_num,
+			count(distinct case when pyht in ('事业编制聘用合同','劳动聘用合同') then userid end) as syld_num,
+			count(distinct case when pyht like '派遣人员劳动合同%' then userid end) as pqry_num,
+			count(distinct case when pyht  like '长聘体系%' then userid end) as cptx_num,
+			count(distinct case when pyht like '柔性聘用%' then userid end) as rxpy_num,
+			count(distinct case when pyht  like '外国文教%' then userid end) as wgwj_num,
+			count(distinct case when pyht  in ('变更协议','兼职聘用协议') then userid end) as bgjz_num,
+			count(distinct case when GJM ='CN' then userid end) as cn_num,
+			count(distinct case when GJM in ('TW','MO','HK') then userid end) as gat_num,
+			count(distinct case when GJM not in ('CN','TW','MO','HK') then userid end) as wg_num,
+			count(distinct case when ZJM ='1' then userid end) as zg_num,
+			count(distinct case when ZJM ='2' then userid end) as fg_num,
+			count(distinct case when ZJM ='3' then userid end) as zj_num,
+			count(distinct case when ZJM ='4' then userid end) as zjyx_num,
+			count(distinct userid ) as total_num,
+			count(distinct case when rylbm not like '1%' and rylbm not like '2%'  then userid end) as otherpy_num,
+			count(distinct case when jzglbm='111' and lxhg='是' then userid end) as szyj_lxhg_num,
+			count(distinct case when jzglbm='111' and GJM not in ('CN') then userid end) as szyj_jw_num,
+			curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			group by superiorfacultycode;
+
+
+			-- 教师年龄、工作年限分布图，不包括教职工类别码4，6，7，8的教职工
+
+			truncate sams_data.teacher_agework_adl;
+			insert into sams_data.teacher_agework_adl
+			select uuid(),faculty,facultycode,superiorfacultycode,superiorfaculty,
+			(case when v_year- cast(substring(birthdate,1,4) as int)<30 or birthdate is null then '0-29'
+			when v_year- cast(substring(birthdate,1,4) as int)>=30 and v_year- cast(substring(birthdate,1,4) as int)<40 then '30-39'
+			when v_year- cast(substring(birthdate,1,4) as int)>=40 and v_year- cast(substring(birthdate,1,4) as int)<50 then '40-49'
+			when v_year- cast(substring(birthdate,1,4) as int)>=50 and v_year- cast(substring(birthdate,1,4) as int)<60 then '50-59'
+			else '60以上' end) as age,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)<2) then userid end) as wl2_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=2  and v_year- cast(substring(schoolym,1,4) as int)<5)  then userid end) as wme2_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=5 and v_year- cast(substring(schoolym,1,4) as int)<10)  then userid end) as wme5_num,
+			count(distinct case when length(schoolym)>0 and (v_year- cast(substring(schoolym,1,4) as int)>=10) then userid end) as wme10_num,curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			group by facultycode,superiorfacultycode,age;
+
+			-- 院长角色，教师年龄、工作年限分布图，不包括教职工类别码4，6，7，8的教职工
+
+			truncate sams_data.teacher_agework_yz_adl;	
+			insert into sams_data.teacher_agework_yz_adl
+			select uuid(),superiorfacultycode,superiorfaculty,
+			(case when v_year- cast(substring(birthdate,1,4) as int)<30 or birthdate is null then '0-29'
+			when v_year- cast(substring(birthdate,1,4) as int)>=30 and v_year- cast(substring(birthdate,1,4) as int)<40 then '30-39'
+			when v_year- cast(substring(birthdate,1,4) as int)>=40 and v_year- cast(substring(birthdate,1,4) as int)<50 then '40-49'
+			when v_year- cast(substring(birthdate,1,4) as int)>=50 and v_year- cast(substring(birthdate,1,4) as int)<60 then '50-59'
+			else '60以上' end) as age,
+			count(distinct case when length(schoolym)>0  and (v_year- cast(substring(schoolym,1,4) as int)<2) then userid end) as wl2_num,
+			count(distinct case when length(schoolym)>0  and (v_year- cast(substring(schoolym,1,4) as int)>=2  and v_year- cast(substring(schoolym,1,4) as int)<5)  then userid end) as wme2_num,
+			count(distinct case when length(schoolym)>0  and (v_year- cast(substring(schoolym,1,4) as int)>=5 and v_year- cast(substring(schoolym,1,4) as int)<10)  then userid end) as wme5_num,
+			count(distinct case when  length(schoolym)>0  and (v_year- cast(substring(schoolym,1,4) as int)>=10) then userid end) as wme10_num,curdate()
+			from sams_data.teacher_info_adl
+			where  rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			group by superiorfacultycode,age;
+
+
+			-- 教师学位学历表，系主任
+
+			truncate  sams_data.teacher_xwxl_adl;
+			insert into sams_data.teacher_xwxl_adl
+			select uuid(),faculty,facultycode,superiorfacultycode,superiorfaculty,xlmc,
+			(case when xwmc like '%学士%' then '学士'
+			when xwmc like  '%硕士%' then '硕士'
+			else '其他' end) as xwm,
+			count(distinct userid) as num,
+			count(distinct case when gender!= '女性' then userid end) as mnum,
+			count(distinct case when gender= '女性' then userid end) as wnum,
+			curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			AND (xwmc NOT like  '%博士%' or xwmc is null)
+			group by facultycode,superiorfacultycode,xlmc,xwm
+			UNION ALL
+			select uuid(),faculty,facultycode,superiorfacultycode,superiorfaculty,xlmc,
+			(CASE WHEN EXISTS (SELECT * FROM sams.hr_academicdeg AA WHERE AA.SCBJ='N' AND AA.userid=BB.userid AND AA.schooltype NOT IN('156','') AND academiccode LIKE '2%'  )
+			then '海归博士' ELSE '境内博士'  end) as xwm,
+			count(distinct userid) as num,
+			count(distinct case when gender!= '女性' then userid end) as mnum,
+			count(distinct case when gender= '女性' then userid end) as wnum,
+			curdate()
+			from sams_data.teacher_info_adl BB
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			AND xwmc like  '%博士%'
+			group by facultycode,superiorfacultycode,xlmc,xwm;
+
+			-- 教师学位学历表，院长角色	
+
+			truncate  sams_data.teacher_xwxl_yz_adl;
+			insert into sams_data.teacher_xwxl_yz_adl
+			select uuid(),superiorfacultycode,superiorfaculty,xlmc,
+			(case when xwmc like '%学士%' then '学士'
+			when xwmc like  '%硕士%' then '硕士'
+			else '其他' end) as xwm,
+			count(distinct userid) as num,
+			count(distinct case when gender!= '女性' then userid end) as mnum,
+			count(distinct case when gender= '女性' then userid end) as wnum,
+			curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			AND (xwmc NOT like  '%博士%' or xwmc is null)
+			group by superiorfacultycode,xlmc,xwm
+			UNION ALL
+			select uuid(),superiorfacultycode,superiorfaculty,xlmc,
+			(CASE WHEN EXISTS (SELECT * FROM sams.hr_academicdeg AA WHERE AA.SCBJ='N' AND AA.userid=BB.userid AND AA.schooltype NOT IN('156','') AND academiccode LIKE '2%'  )
+			then '海归博士' ELSE '境内博士'  end) as xwm,
+			count(distinct userid) as num,
+			count(distinct case when gender!= '女性' then userid end) as mnum,
+			count(distinct case when gender= '女性' then userid end) as wnum,
+			curdate()
+			from sams_data.teacher_info_adl BB
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			AND xwmc like  '%博士%'
+			group by superiorfacultycode,xlmc,xwm;   
+
+			-- 院长角色，统计教师岗位类型
+
+			truncate  sams_data.teacher_tjyz_adl;
+			insert into sams_data.teacher_tjyz_adl
+			select uuid(),superiorfacultycode,superiorfaculty,
+			count(distinct case when jzglbm= '111' and bzm='140' then userid end) as zrjs,
+			count(distinct case when jzglbm= '111' and bzm='160'  then userid end) as zzky,
+			count(distinct case when jzglbm= '111' and gwm='11'  then userid end) as jxwz,
+			count(distinct case when jzglbm= '111' and gwm='12'  then userid end) as kywz,
+			count(distinct case when jzglbm= '111' and gwm='13'  then userid end) as jkbz,
+			count(distinct case when jzglbm= '112' or gwm='131'  then userid end) as xz,
+			count(distinct case when  jzglbm='116'  then userid end) as jf,
+			count(distinct userid) as total_num, 
+			curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			group by superiorfacultycode;
+
+			-- 系主任角色，统计教师岗位类型
+			
+			truncate  sams_data.teacher_tjfl_adl;
+			insert into sams_data.teacher_tjfl_adl
+			select uuid(),faculty,facultycode,superiorfacultycode,superiorfaculty,
+			count(distinct case when jzglbm= '111' and bzm='140' then userid end) as zrjs,
+			count(distinct case when jzglbm= '111' and bzm='160'  then userid end) as zzky,
+			count(distinct case when jzglbm= '111' and gwm='11'  then userid end) as jxwz,
+			count(distinct case when jzglbm= '111' and gwm='12'  then userid end) as kywz,
+			count(distinct case when jzglbm= '111' and gwm='13'  then userid end) as jkbz,
+			count(distinct case when jzglbm= '112' or gwm='131'  then userid end) as xz,
+			count(distinct case when  jzglbm='116'  then userid end) as jf, 
+			count(distinct userid) as total_num,
+			curdate()
+			from sams_data.teacher_info_adl
+			where rylbm not like '4%' and  rylbm not like '8%' and  rylbm not like '6%'  and  rylbm not like '7%'
+			group by facultycode,superiorfacultycode;	
+					
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('3','P_Teacher_HuiZong','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('3','P_Teacher_HuiZong','0',now(),'执行成功');
+	END IF;
+END

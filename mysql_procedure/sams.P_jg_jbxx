@@ -1,0 +1,6 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_jg_jbxx`()
+BEGIN
+	insert into sams_data.jg_jbxx_record(gh,xm,przwm,przwmc,pdny,zjm,zjmc,year,yxdm) select distinct userid,name,przwm,print_mc,title_date,zjm,zwzj ,YEAR(NOW()),superiorfacultycode from sams_data.teacher_info_adl;
+
+
+END

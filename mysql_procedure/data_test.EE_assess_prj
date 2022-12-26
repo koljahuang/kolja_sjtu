@@ -1,0 +1,179 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `EE_assess_prj`(IN `usercode` varchar(20),IN `startdate` varchar(20),IN `enddate` varchar(20),IN `endate_dkje` varchar(20),IN _assess_type int)
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+		-- 聘期考核主持项目汇总
+		insert into data_test.assess_proj_amount(id,dkjf,gh,project_no,project_type,start_time,end_time,name,pqnbrcd,
+		flag,role,assess_type)
+		select
+		uuid()                                                               id,
+		REPLACE(TRUNCATE(ifnull(xzs.dkjf, xz.dkje), 2), '.00', '')              dkjf,
+
+		xz.gh,
+		xz.xmbh                                                                 project_no,
+		xz.xmfl                                                                 project_type,
+		xz.ksrq                                                                 start_time,
+		xz.jsrq                                                                 end_time,
+		xz.xmmc                                                                 name,
+		REPLACE(TRUNCATE(tka.pqnbrcd, 2), '.00', '')                            pqnbrcd,
+
+		xzs.flag                                                                flag,
+
+		if(xzs.role is not null and xzs.role != '', xzs.role, xz.xmxz)          role,'0'
+	from sams_data.xm_zkthz_show xz left join sams_data.xm_zkthz_select xzs
+			on xz.xmbh = xzs.xmbh and xz.gh = xzs.gh and xzs.year = '2020' and xzs.assess_type = '0'
+		left join (select
+								 sum(ifnull(dkje, 0)) pqnbrcd,
+								 gh,
+								 jfkkh,
+								 fpsj
+							 from sams_data.zkt_cw_fp
+							 where replace(fpsj, '-', '.') >= replace(startdate, '-', '.') and replace(fpsj, '-', '.') <= replace(endate_dkje, '-', '.')
+							 group by gh, jfkkh) tka on tka.gh = usercode and tka.jfkkh = xz.jfkkh
+	where xz.gh = usercode and ((replace(xz.ksrq, '-', '.') >= replace(startdate, '-', '.') and
+																replace(xz.ksrq, '-', '.') <= replace(enddate, '-', '.')) or
+															 (replace(xz.jsrq, '-', '.') >= replace(startdate, '-', '.')))
+	and xzs.flag=1 and _assess_type=0
+	order by xzs.flag desc, -xzs.printxh desc, xz.ksrq desc;
+	
+	-- 聘期考核参与项目汇总	
+		insert into data_test.assess_proj_amount(id,dkjf,gh,project_no,project_type,start_time,end_time,name,pqnbrcd,
+		flag,role,assess_type)
+
+		SELECT DISTINCT
+		      a.xmbh                     id,
+			REPLACE(TRUNCATE(b.DKJE, 2), '.00', '')                              dkjf,
+											a.gh,
+			a.xmbh                                                               project_no,
+			b.xmfl                                                               project_type,
+			b.ksrq                                                               start_time,
+			b.jsrq                                                               end_time,
+		a.name,
+			REPLACE(TRUNCATE(tka.pqnbrcd, 2), '.00', '')                         pqnbrcd,
+		xzs.flag,
+
+			'参与'    role,'0' assess_type
+		FROM (SELECT
+						SUM(IFNULL(dkje, 0)) dkjf,
+						jfkkh,
+						xmmc                 name,
+						xmbh                 id,
+						xmbh,
+						gh,
+						fpsj
+					FROM sams_data.zkt_cw_fp
+					WHERE p_id is not null and gh = usercode
+					GROUP BY jfkkh) a LEFT JOIN sams_data.`xm_zkthz_show` b ON a.jfkkh = b.jfkkh
+			left join sams_factdata.t_ky_xmzkt tkx on tkx.JFKKH = a.jfkkh
+			left join sams_data.xm_zkthz_select xzs
+				on a.id = xzs.xmbh and xzs.gh = a.gh and xzs.year = '2020' and xzs.assess_type = '0'
+			left join (select
+									 sum(ifnull(dkje, 0)) pqnbrcd,
+									 jfkkh,
+									 gh,
+									 fpsj
+								 from sams_data.zkt_cw_fp
+								 where replace(fpsj, '-', '.') >= replace(startdate, '-', '.') and
+											 replace(fpsj, '-', '.') <= replace(endate_dkje, '-', '.')
+								 group by gh, jfkkh) tka on tka.gh = usercode and tka.jfkkh = a.jfkkh
+		where
+			((replace(b.ksrq, '-', '.') >= replace(startdate, '-', '.') and replace(b.ksrq, '-', '.') <= replace(enddate, '-', '.'))
+			 or (replace(b.jsrq, '-', '.') >= replace(startdate, '-', '.')))
+		and  xzs.flag=1  and _assess_type=0
+		order by xzs.flag desc, -xzs.printxh desc, b.ksrq desc;
+	
+	
+	-- assess_type=1 职称评审 show表
+	
+		insert into data_test.assess_proj_amount(id,dkjf,gh,project_no,project_type,start_time,end_time,name,pqnbrcd,
+		flag,role,assess_type)
+		select
+		uuid()                                                                 id,
+		REPLACE(TRUNCATE(ifnull(xzs.dkjf, xz.dkje), 2), '.00', '')              dkjf,
+		xz.gh,
+		xz.xmbh                                                                 project_no,
+		xz.xmfl                                                                 project_type,
+		xz.ksrq                                                                 start_time,
+		xz.jsrq                                                                 end_time,
+		xz.xmmc                                                                 name,
+		REPLACE(TRUNCATE(xz.assess_dkje, 2), '.00', '')                         pqnbrcd,
+
+		xzs.flag                                                                flag,
+
+		if(xzs.role is not null and xzs.role != '', xzs.role, xz.xmxz)          role,
+	'1'  assess_type
+	from sams_data.xm_zkthz_show xz left join sams_data.xm_zkthz_select xzs
+			on xz.xmbh = xzs.xmbh and xz.gh = xzs.gh and xzs.year = '2020' and xzs.assess_type = '1'
+		left join (select
+								 sum(ifnull(dkje, 0)) pqnbrcd,
+								 gh,
+								 jfkkh,
+								 fpsj
+							 from sams_data.zkt_cw_fp
+							 where replace(fpsj, '-', '.') >= replace(startdate, '-', '.')
+							 group by gh, jfkkh) tka on tka.gh = usercode and tka.jfkkh = xz.jfkkh
+	where xz.gh = usercode and replace(xz.ksrq, '-', '.') >= replace(startdate, '-', '.') and
+				replace(xz.ksrq, '-', '.') <= (if(xz.xmlb = '自然科学基金委', '2021.01.05', '2020.12.31'))
+	and xzs.flag=1 and _assess_type=1
+	order by xzs.flag desc, -xzs.printxh desc, xz.ksrq desc;
+	
+	-- assesstype=1 职称评审分配表
+	
+		insert into data_test.assess_proj_amount(id,dkjf,gh,project_no,project_type,start_time,end_time,name,pqnbrcd,
+		flag,role,assess_type)
+			SELECT DISTINCT
+			a.id,
+			REPLACE(TRUNCATE(b.DKJE, 2), '.00', '')                              dkjf,
+			a.gh,
+			a.xmbh                                                               project_no,
+			b.xmfl                                                               project_type,
+			b.ksrq                                                               start_time,
+			b.jsrq                                                               end_time,
+			a.name,
+			REPLACE(TRUNCATE(tka.pqnbrcd, 2), '.00', '')                         pqnbrcd,
+			REPLACE(TRUNCATE(ifnull(tkx.ZKTHTJE, b.htjf), 2), '.00', '')         htjf,
+			xzs.flag,
+			'参与'                                                                 role,
+			1  assess_type
+			FROM (SELECT
+							SUM(IFNULL(dkje, 0)) dkjf,
+							jfkkh,
+							xmmc                 name,
+							xmbh                 id,
+							xmbh,
+							gh,
+							fpsj
+						FROM sams_data.zkt_cw_fp
+						WHERE p_id is not null and gh = usercode
+						GROUP BY jfkkh) a LEFT JOIN sams_data.`xm_zkthz_show` b ON a.jfkkh = b.jfkkh
+				left join sams_factdata.t_ky_xmzkt tkx on tkx.JFKKH = a.jfkkh
+				left join sams_data.xm_zkthz_select xzs
+					on a.id = xzs.xmbh and xzs.gh = a.gh and xzs.year = '2020' and xzs.assess_type = '1'
+				left join (select
+										 sum(ifnull(dkje, 0)) pqnbrcd,
+										 jfkkh,
+										 gh
+									 from sams_data.zkt_cw_fp
+									 where replace(fpsj, '-', '.') >= replace(startdate, '-', '.')
+									 group by gh, jfkkh) tka on tka.gh = usercode and tka.jfkkh = a.jfkkh
+			where replace(b.ksrq, '-', '.') >= replace(startdate, '-', '.') and
+						replace(b.ksrq, '-', '.') <= (if(b.xmlb = '自然科学基金委', '2021.01.05', '2020.12.31'))
+						and xzs.flag=1 and _assess_type=1
+			order by xzs.flag desc, -xzs.printxh desc, b.ksrq desc;
+			
+			
+	-- assesstype=1 职称评审导入表
+	
+
+				 
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		
+	ELSE
+		COMMIT;
+		
+	END IF;
+
+END

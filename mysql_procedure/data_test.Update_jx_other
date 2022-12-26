@@ -1,0 +1,127 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_jx_other`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断人事处荣誉表是否有更新信息
+	if ((select count(*) from data_test.qk_once_jx)<30000) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('20','Update_jx_other','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('20','Update_jx_other','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+
+        update data_test.qk_once_jx a
+        inner join sams_factdata.dm_jxlx b
+        on a.jxlxm=b.dm
+        set a.jxlxmc=if(b.dm='28','莙政项目',b.mc)
+        where a.jxlxmc is null;
+
+        create temporary table sams_factdata.tmp_jx_other like sams_factdata.jx_other;
+
+        insert into sams_factdata.tmp_jx_other(id, gh, xh, jxlxm, jxlxmc, jxnr, jxgzl, jxpy, jxsny, jxzny, cgdh, qr,
+                                               tjbs, xss, jxfg, zxss, axss, bz, Sign, QrBZ, SJLY, Sfhj, Xsxm, Jxmc,
+                                               is_inserted_by_teacher,module_type)
+        select uuid(),gh, xh, jxlxm, jxlxmc, jxnr, jxgzl, jxpy,
+               replace(jxsny,'.','-'), replace(jxzny,'.','-'), cgdh, qr, tjbs, xss, jxfg, zxss,
+               axss, bz, Sign, QrBZ, SJLY, Sfhj, Xsxm, Jxmc, 'R', 'TEACHING'
+        from data_test.qk_once_jx
+        where ifnull(jxlxm,'')<>'no' and ifnull(jxlxmc,'') not in ('PRP','上海市级创新实践','国家级创新实践',
+        '大学生创新实验','带毕业设计','校级创新实践','班主任','带设计');
+
+		delete from sams_factdata.jx_other
+		where xh is not null and not exists (
+		    select * from sams_factdata.tmp_jx_other B
+		    where B.gh=sams_factdata.jx_other.gh
+		    and B.xh=sams_factdata.jx_other.xh);
+
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, createdate)
+        select * from
+        (select uuid(),
+               A.id as datakeyid,
+               '同步' as logtype,
+               '其他信息' as datatype,
+               '人力资源处' as name,
+               concat(
+                   if(ifnull(A.jxlxmc,'')<>ifnull(B.jxlxmc,''),concat('成果小类:', ifnull(A.jxlxmc,''), '-->', ifnull(B.jxlxmc,''), ';'),''),
+                   if(ifnull(A.xss,'')<>ifnull(B.xss,''),concat('学生人数:', ifnull(A.xss,''), '-->', ifnull(B.xss,''), ';'),''),
+                   if(ifnull(A.jxsny,'')<>ifnull(B.jxsny,''),concat('开始时间:', ifnull(A.jxsny,''), '-->', ifnull(B.jxsny,''), ';'),''),
+                   if(ifnull(A.jxzny,'')<>ifnull(B.jxzny,''),concat('结束时间:', ifnull(A.jxzny,''), '-->', ifnull(B.jxzny,''), ';'),''),
+                   if(ifnull(A.jxnr,'')<>ifnull(B.jxnr,''),concat('成果内容:', ifnull(A.jxnr,''), '-->', ifnull(B.jxnr,''), ';'),'')
+                   ) as updatecontent,
+               current_timestamp as createdate
+        from sams_factdata.jx_other A
+        inner join sams_factdata.tmp_jx_other B
+        on A.gh=B.gh and A.xh=B.xh
+        where A.gh is not null) as log
+        where log.updatecontent<>'';
+        
+		update sams_factdata.jx_other A
+		inner join sams_factdata.tmp_jx_other B
+		on A.gh=B.gh and A.xh=B.xh
+		set A.jxlxm=B.jxlxm,
+		    A.jxlxmc=B.jxlxmc,
+		    A.jxnr=B.jxnr,
+		    A.jxgzl=B.jxgzl,
+		    A.jxpy=B.jxpy,
+		    A.jxsny=B.jxsny,
+		    A.jxzny=B.jxzny,
+		    A.cgdh=B.cgdh,
+		    A.qr=if(B.qr='2','77',B.qr),
+		    A.tjbs=B.tjbs,
+		    A.xss=B.xss,
+		    A.jxfg=B.jxfg,
+		    A.zxss=B.zxss,
+		    A.axss=B.axss,
+		    -- A.bz=B.bz,
+		    A.Sign=B.Sign,
+		    A.QrBZ=B.QrBZ,
+		    A.SJLY=B.SJLY,
+		    A.Sfhj=B.Sfhj,
+		    A.Xsxm=B.Xsxm,
+		    A.Jxmc=B.Jxmc
+        where A.gh is not null;
+
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, createdate)
+        select uuid(),
+               id as datakeyid,
+               '同步' as logtype,
+               '其他信息' as datatype,
+               '人力资源处' as name,
+               '新增' as updatecontent,
+               current_timestamp as createdate
+        from sams_factdata.tmp_jx_other
+        where not exists (
+            select * from sams_factdata.jx_other B
+            where B.gh=sams_factdata.tmp_jx_other.gh
+            and B.xh=sams_factdata.tmp_jx_other.xh);
+
+        insert into sams_factdata.jx_other(id, gh, xh, jxlxm, jxlxmc, jxnr, jxgzl, jxpy, jxsny,
+                                           jxzny, cgdh, qr, tjbs, xss, jxfg, zxss, axss, bz,
+                                           Sign, QrBZ, SJLY, Sfhj, Xsxm, Jxmc, is_inserted_by_teacher, module_type)
+        select id, gh, xh, jxlxm, jxlxmc, jxnr, jxgzl, jxpy, jxsny,
+               jxzny, cgdh, qr, tjbs, xss, jxfg, zxss, axss, bz,
+               Sign, QrBZ, SJLY, Sfhj, Xsxm, Jxmc, is_inserted_by_teacher, module_type
+		from sams_factdata.tmp_jx_other
+		where not exists (
+		    select * from sams_factdata.jx_other B
+		    where B.gh=sams_factdata.tmp_jx_other.gh
+		    and B.xh=sams_factdata.tmp_jx_other.xh);
+
+        delete from sams_factdata.jx_other where gh='10440' and (xh=4 or xh=5);
+
+        drop table sams_factdata.tmp_jx_other;
+
+	    IF EXCEPTION = 1 THEN
+	        ROLLBACK;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('20','Update_jx_other','1',now(),'执行失败');
+	    ELSE
+	        COMMIT;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('20','Update_jx_other','0',now(),'执行成功');
+	    END IF;
+    end if;
+END

@@ -1,0 +1,15 @@
+CREATE DEFINER=`sams`@`sams-%` PROCEDURE `P_Update_hr_postdoctor_faculty`(IN v_id varchar(60), IN v_faculty varchar(100) character set utf8)
+begin
+    DECLARE p_username varchar(200);
+    declare p_userid varchar(20);
+    SELECT userid, name_cert into p_userid, p_username FROM sams.hr_basic WHERE id = v_id and facultycategory='博士后';
+    IF p_userid is not null
+        then
+        if exists(select 1 from data_test.cxr_hr_postdoctor_faculty_update where gh = p_userid)
+            then
+            update data_test.cxr_hr_postdoctor_faculty_update set real_faculty = v_faculty where gh = p_userid;
+        else
+            insert into data_test.cxr_hr_postdoctor_faculty_update(gh, xm, real_faculty) VALUE (p_userid, p_username, v_faculty);
+        end if;
+    end if;
+end

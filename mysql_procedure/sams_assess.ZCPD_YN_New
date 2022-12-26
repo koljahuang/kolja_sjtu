@@ -1,0 +1,70 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `ZCPD_YN_New`(IN _gh varchar(20), OUT YN_inside varchar(20),
+                                                              OUT YN_outside varchar(20))
+BEGIN
+  #Routine body goes here...
+    DECLARE _dm varchar(10);
+    DECLARE _mc varchar(20);
+    DECLARE _academiccode varchar(10);
+    DECLARE _pdny varchar(10);
+    DECLARE _educationym varchar(20);
+    DECLARE _prny varchar(10);
+    DECLARE EXCEPTION INT DEFAULT 0;
+    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+    START TRANSACTION;
+
+    select ifnull(b.dm,'') as dm,
+           ifnull(b.mc,'') as mc,
+           ifnull(c.academiccode,'') as acacademiccode,
+           ifnull(a.pdny,'') as pdny,
+           ifnull(c.educationym,'') as educationym,
+           ifnull(a.prny,'') as prny
+    into _dm, _mc,_academiccode,_pdny,_educationym,_prny
+    from (
+        select substring_index(substring_index(info,',',1),'|',1) as przwm,
+               substring_index(substring_index(substring_index(info,',',1),'|',2),'|',-1) as pdny,
+               substring_index(substring_index(info,',',1),'|',-1) as prny,
+               gh
+        from(
+            select group_concat((case
+                when przwm is null or przwm='' then '000'
+                else przwm
+                end
+            ),'|',pdny,'|',prny
+                order by substring(
+                (case
+                when przwm is null or przwm='' or substring(przwm,3,1)='0' then '00无'
+                else przwm
+                end),3,1) asc , pdny asc) as info,
+                   gh
+            from sams_factdata.zyzwk
+            where (psdw is null or psdw='' or psdw='上海交通大学') and gh=_gh
+            group by gh) e ) a
+    left join sams_factdata.DM_ZJM b
+    on substring(a.przwm,3,1)=b.dm
+    left join (
+        select academiccode,
+               educationym,
+               userid
+        from sams.hr_academicdeg
+        where userid=_gh and substring(academiccode,1,1)=2) c
+    on a.gh=c.userid;
+
+
+    if(_mc in ('正高','副高')) then select _pdny,_pdny into YN_inside,YN_outside;
+    elseif(_mc ='中级' and substring(_academiccode,1,1) = '2')
+        then select if(_pdny<_educationym,_pdny,_educationym),_pdny into YN_inside, YN_outside;
+    elseif(_mc ='中级' and substring(_academiccode,1,1) <> '2')
+        then select _pdny,_pdny into YN_inside, YN_outside;
+    elseif(_mc not in ('正高','副高','中级') and substring(_academiccode,1,1) = '2')
+        then select _educationym,_pdny into YN_inside,YN_outside;
+    elseif(_mc not in ('正高','副高','中级','无职称')) then select _pdny,_pdny into YN_inside,YN_outside;
+    elseif(_mc='无职称') then select _prny,_prny into YN_inside,YN_outside;
+    end if;
+
+    IF EXCEPTION = 1 THEN
+        ROLLBACK;
+    ELSE
+        COMMIT;
+    END IF;
+
+End

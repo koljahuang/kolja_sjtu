@@ -1,0 +1,77 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_JD_XMXQ`(IN v_year varchar(20))
+BEGIN
+  #Routine body goes here...
+
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+-- 绩效、酬金计算--存储过程
+-- 纵向项目-----------------------------------------------------------------------------------------
+-- 已有纵向项目绩效数据刷新(performance)
+UPDATE sams_factdata.T_KY_ALLOCATE a
+set a.performance=amt3/10000
+where  SA_DEPART like '02%' AND pnam2 like '%纵%'
+  AND syear=v_year -- vyear
+AND amt3  IS NOT NULL AND amt3<>0  and amt3<>'' and performance is null ;
+
+-- 纵向项目绩效刷新--同步数据中没有绩效，并且满足校管理费:院管理费 约等于4:6
+update sams_factdata.T_KY_ALLOCATE a
+set a.performance=(a.amt2/10000)*(2/3),a.college_manage_fee=(a.amt2/10000)/3
+where SA_DEPART like '02%' AND pnam2 like '%纵%'
+  AND syear=v_year  -- vyear
+  and a.performance is null and amt2<>0 and amt2 is not null
+and (amt3 is null or amt3=0 or amt3='') and (amt1/(amt2+amt1) between 0.38 and  0.42 );
+
+
+-- 纵向项目绩效刷新--同步数据中没有绩效，并且不满足校管理费:院管理费 约等于4:6
+update sams_factdata.T_KY_ALLOCATE a
+set a.performance=0
+where SA_DEPART like '02%' AND pnam2 like '%纵%'
+  AND syear=v_year-- vyear
+  and a.performance is null
+and (amt3 is null or amt3=0 or amt3='') and
+      (if(ifnull(amt1+amt2,0)!=0,amt1/(amt2+amt1) < 0.38 or amt1/(amt2+amt1)>0.42, amt2 =0
+    or amt2 is null or amt2=''));
+
+
+-- 纵向新院管理费
+-- 新院管理费college_manage_fee=原院管理费amt2-绩效performance
+update sams_factdata.T_KY_ALLOCATE a
+set a.college_manage_fee=(ifnull(a.amt2,0)/10000)-ifnull(a.performance,0)
+where  SA_DEPART like '02%' AND pnam2 like '%纵%'
+  AND syear=v_year-- vyear
+ and a.college_manage_fee is null;
+
+-- 纵向项目酬金为0(remuneration)
+-- UPDATE sams_factdata.T_KY_ALLOCATE  a
+-- set a.remuneration=null
+-- where   SA_DEPART like '02%' AND pnam2 like '%纵%'
+--   AND syear=v_year;
+-- 
+
+
+
+
+-- 【横向项目】d酬金remuneration=到款inamt*0.3 无绩效performance（填充0） 新院管理费college_manage_fee=原院管理费amt2
+-- 横向项目
+-- 到款的30%
+update sams_factdata.T_KY_ALLOCATE a
+set a.remuneration=((a.inamt/10000))*0.3,a.performance=0,a.college_manage_fee=amt2/10000
+where a.SA_DEPART like '02%' and pnam2 like '%横%' and syear=v_year-- vyear
+and a.remuneration is null and a.performance is null and a.college_manage_fee is null;
+
+update sams_factdata.T_KY_ALLOCATE a
+set a.college_manage_fee=(ifnull(a.amt2,0)/10000)
+where  a.SA_DEPART like '02%' and pnam2 like '%横%' and syear=v_year-- vyear
+and a.college_manage_fee is null;
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('7','P_JD_XMXQ','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('7','P_JD_XMXQ','0',now(),'执行成功');
+	END IF;
+
+END

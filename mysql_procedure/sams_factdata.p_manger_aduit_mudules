@@ -1,0 +1,98 @@
+CREATE DEFINER=`sams`@`sams-%` PROCEDURE `p_manger_aduit_mudules`(IN v_collegeId varchar(100))
+BEGIN
+   -- 论文
+SELECT 'LW' module, COUNT(*) `count` FROM (
+SELECT a.lzmc FROM (SELECT lzmc FROM sams_factdata.lzk WHERE superiorfacultycode = v_collegeId AND scbj='N' AND qr = 88) a
+GROUP BY a.lzmc) c
+UNION
+-- 专利
+SELECT 'ZL' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(qr ORDER BY qr DESC) STATUS FROM sams_factdata.sr_patent a LEFT JOIN sams.hr_basic b ON a.gh=b.userid AND b.usertype='C'
+WHERE a.scbj='N' AND (a.superiorfacultycode=v_collegeId OR b.superiorfacultycode=v_collegeId) GROUP BY zlh) res WHERE STATUS LIKE '%88%'
+UNION
+-- 学术兼职
+SELECT 'JZ' module, COUNT(*) `count` FROM sams_factdata.sr_academic_pt a LEFT JOIN sams.hr_basic b ON a.user_id=b.userid AND b.usertype='C'
+WHERE a.scbj='N' AND (a.superiorfacultycode=v_collegeId OR b.superiorfacultycode=v_collegeId) AND STATUS=88
+UNION
+-- 学术活动
+SELECT 'HD' module, COUNT(*) `count` FROM sams_factdata.sr_academic_act a LEFT JOIN sams.hr_basic b ON a.user_id=b.userid AND b.usertype='C'
+WHERE a.scbj='N' AND (a.superiorfacultycode=v_collegeId OR b.superiorfacultycode=v_collegeId) AND STATUS=88
+UNION
+-- 获奖
+SELECT 'HJ' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(b.status ORDER BY b.status DESC) STATUS FROM sams_factdata.award_info a LEFT JOIN sams_factdata.award_stuff b ON a.id=b.jlid
+    LEFT JOIN sams.hr_basic c ON b.gh=c.userid AND c.usertype='C'
+WHERE a.scbj='N' AND (b.superfacultycode=v_collegeId OR c.superiorfacultycode=v_collegeId) GROUP BY a.id) res WHERE STATUS LIKE '%88%'
+UNION
+-- 软件著作权
+SELECT 'RJ' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(b.status ORDER BY b.status DESC) STATUS FROM sams_factdata.award_software_info a LEFT JOIN sams_factdata.award_stuff b ON a.id=b.jlid
+    LEFT JOIN sams.hr_basic c ON b.gh=c.userid AND c.usertype='C'
+WHERE a.scbj='N' AND (b.superfacultycode=v_collegeId OR c.superiorfacultycode=v_collegeId) GROUP BY a.id) res WHERE STATUS LIKE '%88%'
+UNION
+-- 著作信息
+SELECT 'ZZ' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(b.status ORDER BY b.status DESC) STATUS FROM sams_factdata.zzk a LEFT JOIN sams_factdata.zzk_member b ON a.id=b.zzk_id
+    LEFT JOIN sams.hr_basic c ON b.userid=c.userid AND c.usertype='C'
+WHERE a.scbj='N' AND (b.superiorfacultycode=v_collegeId OR c.superiorfacultycode=v_collegeId) GROUP BY a.id) res WHERE STATUS LIKE '%88%'
+UNION
+-- 个人荣誉
+SELECT 'RY' module, COUNT(*) `count` FROM sams_factdata.sr_honor a LEFT JOIN sams.hr_basic b ON a.user_id=b.userid AND b.usertype='C'
+WHERE a.scbj='N' AND (a.superiorfacultycode=v_collegeId OR b.superiorfacultycode=v_collegeId) AND STATUS=88
+UNION
+SELECT 'BYSJ' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(b.qr ORDER BY CASE WHEN b.qr = '88' THEN '4' WHEN b.qr = '99' THEN '3' WHEN b.qr = '77' THEN '2' ELSE '1' END DESC) STATUS FROM sams_factdata.JX_BYSJ a LEFT JOIN sams_factdata.JX_BYSJ_SUB b ON a.id=b.projid
+	LEFT JOIN sams.hr_basic c ON b.userid=c.userid AND c.usertype='C'
+WHERE a.scbj='N' AND a.stusuperiorfacultycode = v_collegeId GROUP BY a.id) res WHERE STATUS LIKE '88%'
+UNION
+-- 班主任
+SELECT 'CS' module, COUNT(a.id) `count` FROM sams_factdata.`JX_CLASSTEACHER` a
+	LEFT JOIN sams.hr_basic b ON a.userid=b.userid AND b.usertype='C'
+WHERE b.superiorfacultycode = v_collegeId AND a.qr = 88 AND a.scbj = 'N'
+UNION
+-- 授课信息
+SELECT 'BKSK' module, COUNT(*) `count` FROM (
+SELECT GROUP_CONCAT(IFNULL(b.status,99) ORDER BY IFNULL(b.status,99) DESC) STATUS FROM sams_data.pjpf_info a
+    LEFT JOIN sams_factdata.JX_GRDRK b ON a.rscgh=b.userid AND a.bsid=b.bsid
+    LEFT JOIN sams.hr_basic c ON a.rscgh=c.userid AND c.usertype='C'
+WHERE a.tkdx='本科生' AND c.superiorfacultycode=v_collegeId GROUP BY a.bsid) res where status like '%88%'
+UNION
+SELECT 'YJSSK' module, COUNT(*) `count` from (
+SELECT GROUP_CONCAT(IFNULL(b.status,99) ORDER BY IFNULL(b.status,99) DESC) STATUS FROM sams_data.pjpf_info a
+    LEFT JOIN sams_factdata.JX_GRDRK b ON a.rscgh=b.userid AND a.bj=b.bsid
+    LEFT JOIN sams.hr_basic c ON a.rscgh=c.userid AND c.usertype='C'
+WHERE a.tkdx='研究生' AND c.superiorfacultycode=v_collegeId GROUP BY a.bj ) res WHERE STATUS LIKE '%88%'
+UNION
+-- 公益
+SELECT 'PW' module, COUNT(a.id) `count` FROM sams.hr_publicwelfare a
+	LEFT JOIN sams.hr_basic b ON a.userid=b.userid AND b.usertype='C'
+WHERE b.superiorfacultycode = v_collegeId AND a.status = 88 AND a.scbj='N'
+UNION
+-- 教学基地
+SELECT 'TB' module, COUNT(a.id) `count` FROM sams_factdata.`teaching_base` a
+	LEFT JOIN sams.hr_basic b ON a.user_id=b.userid AND b.usertype='C'
+WHERE b.superiorfacultycode = v_collegeId AND a.status = 88 AND a.scbj='N'
+UNION
+-- 其他信息
+SELECT 'OTHER_INFO' module, COUNT(a.id) `count` FROM sams_factdata.`jx_other` a
+        LEFT JOIN sams.hr_basic b ON a.gh=b.userid AND b.usertype='C'
+WHERE b.superiorfacultycode = v_collegeId AND a.qr = 88
+UNION
+-- 参与他人项目
+select 'PROJECT_OTHER' module, COUNT(distinct ext.id) `count` from sams_data.xm_project_ext ext
+         left join sams.hr_basic hr on ext.user_id = hr.userid and hr.usertype = 'C'
+where hr.superiorfacultycode = v_collegeId and ext.status = 88
+UNION
+-- 仪器设备
+SELECT 'INST' module, COUNT(a.id) `count` FROM sams_factdata.`instrument_info` a
+WHERE a.superiorfacultycode = v_collegeId AND a.status = 88 AND a.scbj='N'
+UNION
+-- 应用系统
+SELECT 'APP' module, COUNT(a.id) `count` FROM sams_factdata.`application_info` a
+WHERE a.superiorfacultycode = v_collegeId AND a.status = 88 AND a.scbj='N'
+UNION
+-- 应用系统
+SELECT 'LEC' module, COUNT(a.id) `count` FROM sams_factdata.`lecture_info` a
+WHERE a.superiorfacultycode = v_collegeId AND a.status = 88 AND a.scbj='N'
+;
+    END

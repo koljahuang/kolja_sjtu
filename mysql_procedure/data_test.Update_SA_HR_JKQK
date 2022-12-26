@@ -1,0 +1,153 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_SA_HR_JKQK`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+
+    truncate data_test.SA_HR_JKQK_NEWITEM;
+
+    create temporary table data_test.SA_HR_JKQK_NOW like data_test.SA_HR_JKQK_BEFORE;
+    insert into data_test.SA_HR_JKQK_NOW
+    (gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny)
+    select a.rscgh as gh, #vc50
+           a.xm,#vc50
+           a.kcmc jkmc,#vc200
+           substring_index(round(if(b.kczxs is null,a.kczxs,b.kczxs),0), '.', 1) jkzxs, #smallint
+           '本校本科生' tldx,#vc50
+           a.tkrs tkrs, #int
+           '2' qr, #smallint
+           a.bj,
+           a.bsid bsid,#vc50
+           a.xn xn,#vc50
+           a.xq xq,#vc50
+           a.qsz qsz, #smallint
+           a.jsz jsz, #smallint
+           '110' xslbm, #char3
+           substring_index(round(ifnull(b.grxs,a.brcdks),0),'.',1) brcdks, #vc50
+           a.kcdm kcdm,#vc50
+           '讲授课程' jxfg,#vc50
+           substring_index(round(a.totalxss,0),'.',1) axss, #int
+           substring_index(round(a.totalxss,0),'.',1) akss,#int
+           '交互' sjly,#vc10
+           substring_index(round(a.xqmf,0) ,'.',1) XF,#vc10
+           '个人确认' QrBZ,#vc50
+           a.jkksny jksny,#vc50
+           a.jkzzny jkzzny
+    from sams_data.pjpf_info a
+    left join sams_factdata.JX_GRDRK b on a.rscgh=b.userid and a.bsid=b.bsid
+    where length(a.rscgh)>3 and a.bsid is not null and a.tkdx='本科生' and b.status='77'
+    union
+    select a.rscgh as gh, #vc50
+           a.xm,#vc50
+           a.kcmc jkmc,#vc200
+           substring_index(round(if(b.kczxs is null,a.kczxs,b.kczxs),0), '.', 1) jkzxs, #smallint
+           '硕士研究生（本校全日制）' tldx,#vc50
+           a.tkrs tkrs, #int
+           '2' qr, #smallint
+           a.bj,
+           a.bsid bsid,#vc50
+           a.xn xn,#vc50
+           a.xq xq,#vc50
+           a.qsz qsz, #smallint
+           a.jsz jsz, #smallint
+           '210' xslbm, #char3
+           substring_index(round(ifnull(b.grxs,a.brcdks),0),'.',1) brcdks, #vc50
+           a.kcdm kcdm,#vc50
+           '讲授课程' jxfg,#vc50
+           substring_index(round(a.totalxss,0),'.',1) axss, #int
+           substring_index(round(a.totalxss,0),'.',1) akss,#int
+           '交互' sjly,#vc10
+           substring_index(round(a.xqmf,0) ,'.',1) XF,#vc10
+           '个人确认' QrBZ,#vc50
+           a.jkksny jksny,#vc50
+           a.jkzzny jkzzny
+    from sams_data.pjpf_info a
+    left join sams_factdata.JX_GRDRK b on a.rscgh=b.userid and a.bj=b.bsid
+    where length(a.rscgh)>3 and a.bj is not null and a.tkdx='研究生' and b.status='77';
+
+	insert into data_test.SA_HR_JKQK_NEWITEM
+	(gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny)
+    select a.gh, a.xm, a.jkmc, a.jkzxs, a.tkdx, a.tkrs, a.qr, a.bj, a.bsid, a.xn,
+     a.xq, a.qsz, a.jsz, a.xslbm, a.brcdks, a.kcdm, a.jxfg, a.axss, a.akss,
+     a.sjly, a.XF, a.QrBZ, a.jkksny, a.jkzzny
+    from data_test.SA_HR_JKQK_NOW a
+    where tkdx='本校本科生' and not exists(
+        select * from SA_HR_JKQK_BEFORE b
+        where b.gh=a.gh and b.bsid=a.bsid)
+    union
+    select a.gh, a.xm, a.jkmc, a.jkzxs, a.tkdx, a.tkrs, a.qr, a.bj, a.bsid, a.xn,
+     a.xq, a.qsz, a.jsz, a.xslbm, a.brcdks, a.kcdm, a.jxfg, a.axss, a.akss,
+     a.sjly, a.XF, a.QrBZ, a.jkksny, a.jkzzny
+    from data_test.SA_HR_JKQK_NOW a
+    where tkdx='硕士研究生（本校全日制）' and not exists(
+        select * from SA_HR_JKQK_BEFORE b
+        where b.gh=a.gh and b.bj=a.bj
+        );
+
+	insert into data_test.SA_HR_JKQK_NEWITEM
+	(gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny)
+    select a.gh, a.xm, a.jkmc, a.jkzxs, a.tkdx, a.tkrs, a.qr, a.bj, a.bsid, a.xn,
+     a.xq, a.qsz, a.jsz, a.xslbm, a.brcdks, a.kcdm, a.jxfg, a.axss, a.akss,
+     a.sjly, a.XF, a.QrBZ, a.jkksny, a.jkzzny
+	from data_test.SA_HR_JKQK_NOW a
+    inner join data_test.SA_HR_JKQK_BEFORE b
+    on a.gh=b.gh and a.bsid=b.bsid and a.tkdx=b.tkdx
+    where a.tkdx='本校本科生'
+    and (a.jkzxs!=b.jkzxs
+    or a.tkrs!=b.tkrs
+    or a.brcdks!=b.brcdks
+    or a.axss!=b.axss
+    or a.akss!=b.akss)
+    union
+    select a.gh, a.xm, a.jkmc, a.jkzxs, a.tkdx, a.tkrs, a.qr, a.bj, a.bsid, a.xn,
+     a.xq, a.qsz, a.jsz, a.xslbm, a.brcdks, a.kcdm, a.jxfg, a.axss, a.akss,
+     a.sjly, a.XF, a.QrBZ, a.jkksny, a.jkzzny
+    from data_test.SA_HR_JKQK_NOW a
+    inner join data_test.SA_HR_JKQK_BEFORE b
+    on a.gh=b.gh and a.bj=b.bj and a.tkdx=b.tkdx
+    where b.tkdx='硕士研究生（本校全日制）'
+    and (a.jkzxs!=b.jkzxs
+    or a.tkrs!=b.tkrs
+    or a.brcdks!=b.brcdks
+    or a.axss!=b.axss
+    or a.akss!=b.akss);
+
+
+	truncate data_test.SA_HR_JKQK_BEFORE;
+	insert into SA_HR_JKQK_BEFORE (gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny)
+	select gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny
+	from data_test.SA_HR_JKQK_NOW ;
+
+
+	insert into data_test.SA_HR_JKQK_NEWITEM_BAK
+	(gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny)
+	select gh, xm, jkmc, jkzxs, tkdx, tkrs, qr, bj, bsid, xn,
+     xq, qsz, jsz, xslbm, brcdks, kcdm, jxfg, axss, akss,
+     sjly, XF, QrBZ, jkksny, jkzzny
+	from SA_HR_JKQK_NEWITEM;
+
+
+	drop temporary table data_test.SA_HR_JKQK_NOW;
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('31','Update_SA_HR_JKQK','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('31','Update_SA_HR_JKQK','0',now(),'执行成功');
+	END IF;
+END

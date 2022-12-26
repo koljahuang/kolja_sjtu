@@ -1,0 +1,35 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Run_2`(IN `v_year` varchar(20))
+BEGIN
+  #Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+	call P_JD_XMXQ(v_year);
+	
+	call P_ZKT_CWFP(v_year);
+	
+	#call P_ZKT_TCF();	
+	
+	call P_ZKT_Info(v_year);
+	#call	 P_ZKT_Info_temp();
+	
+	call P_Teacher_Info(v_year);
+	
+	call P_Teacher_HuiZong(v_year);
+	
+
+	
+	call P_YJS();
+	
+	#call P_JD_XMXQ();
+	
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Run_2','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Run_2','0',now(),'执行成功');
+	END IF;		
+
+END

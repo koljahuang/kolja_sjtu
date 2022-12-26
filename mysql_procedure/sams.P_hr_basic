@@ -1,0 +1,47 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_hr_basic`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+		-- 每日更新hr_basic,增加type='C'的教师
+		delete from sams.hr_basic
+		where usertype='C' and userid not in 
+		(select userid from sams.hr_basic where usertype='S');  -- 删除类型没有usertype='S'的教职工,所有教师必须都有usertype='S'对应
+		insert into sams.hr_basic(`id`, `userid`, `ky_userid`, `jaccount`, `usertype`, `name_cert`, `name_py`,
+		`name_native`, `staffno`, `gender`, `gendercode`, `faculty`, `facultycode`, 
+		`superiorfaculty`, `superiorfacultycode`, `faculty_ad`, `facultycode_ad`, `superiorfaculty_ad`, `superiorfacultycode_ad`, `facultycode_manage`, `birthdate`, `idcardcode`, `idcardtype`, 
+		`idcardtypecode`, `marrige`, `marrigecode`, `nation`, `nationcode`, `nativeplace`, `nativeplacecode`, 
+		`regresidence`, `regresidencecode`, `race`, `racecode`, `workym`, `schoolym`, `positiontype`, 
+		`employer`, `jobstatus`, `facultycategorycode`, `facultycategory`, 
+		`hirecode`, `hire`, `create_timestamp`, `update_timestamp`, `scbj`, `remark`, `telephone`, `isgccrc`, `iszrjs`, `issjt` ) 
+		select uuid(),userid,ky_userid,jaccount,'C',name_cert,name_py,
+		name_native,staffno,gender,gendercode,faculty,facultycode,
+		superiorfaculty,superiorfacultycode, `faculty_ad`, `facultycode_ad`, `superiorfaculty_ad`, `superiorfacultycode_ad`,`facultycode_manage`,birthdate,idcardcode,idcardtype,
+		idcardtypecode,marrige,marrigecode,nation,nationcode,nativeplace,nativeplacecode,
+		regresidence,regresidencecode,race,racecode,workym,schoolym,positiontype,
+		employer,jobstatus,facultycategorycode,facultycategory,
+		hirecode,hire,create_timestamp,update_timestamp,scbj,remark,telephone, `isgccrc`, `iszrjs`, `issjt`
+		from sams.hr_basic
+		where usertype='S' and userid not in (select userid from sams.hr_basic where usertype='C');
+		-- 增加类型有usertye='S',但是没有usertype='C'的教职工
+		
+-- 
+-- 		-- 修改faculty
+-- 		update sams.hr_basic
+-- 		set faculty = (select C_NAME from sams_factdata.v_dm_bm where C_ID=facultycode)
+-- 		where facultycode in (
+-- 		select facultycode from
+-- 		(select facultycode,count(distinct faculty) from sams.hr_basic group by facultycode having count(distinct faculty)>1) a
+-- 		); 
+-- 		-- 之前存在一个facultycode对应多个faculty,按照v_dm_bm为标准做统一处理
+		
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('1','P_hr_basic','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('1','P_hr_basic','0',now(),'执行成功');
+	END IF;
+
+END

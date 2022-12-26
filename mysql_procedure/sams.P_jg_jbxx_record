@@ -1,0 +1,36 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_jg_jbxx_record`( IN `v_year` varchar(20))
+BEGIN
+/* 该句是生成历史教师基本信息的，组装基本结构 具体在另外建一个任务每年12月1号插入一次数据，方法待完成。
+insert into jg_jbxx_record(gh,xm,year,yxdm) 
+select gh,xm,'2015',yxdm from sams_factdata.jg_jbxx where schoolny<='2015.12' and 
+((ryztm='9') or (ryztm in('2','3') and ltxny>='2015.12') or (ryztm='4' and lxrq>='2015.12'))
+union all
+select gh,xm,'2016',yxdm from sams_factdata.jg_jbxx where schoolny<='2016.12' and 
+((ryztm='9') or (ryztm in('2','3') and ltxny>='2016.12') or (ryztm='4' and lxrq>='2016.12'))
+union all
+select gh,xm,'2017',yxdm from sams_factdata.jg_jbxx where schoolny<='2017.12' and 
+((ryztm='9') or (ryztm in('2','3') and ltxny>='2017.12') or (ryztm='4' and lxrq>='2017.12'))
+union all
+select gh,xm,'2018',yxdm from sams_factdata.jg_jbxx where schoolny<='2018.12' and 
+((ryztm='9') or (ryztm in('2','3') and ltxny>='2018.12') or (ryztm='4' and lxrq>='2018.12'))
+union all
+select gh,xm,'2019',yxdm from sams_factdata.jg_jbxx where schoolny<='2019.12' and 
+((ryztm='9') or (ryztm in('2','3') and ltxny>='2019.12') or (ryztm='4' and lxrq>='2019.12'));
+*/
+WHILE v_year<YEAR(now()) DO
+-- 刷przwm 职称码和pdny 评定年月
+update sams_data.jg_jbxx_record A
+inner join sams_factdata.zyzwk B on A.gh=B.gh and concat(A.year,'.12')>B.pdny
+set A.PRZWM=B.przwm,A.pdny=B.pdny
+where B.qr='2' and B.xh>0  and substring(B.pdny,1,4)=v_year and B.przwm!='' ;
+set v_year=v_year+1;
+END WHILE;
+-- 补充przwmc 职称名称
+update sams_data.jg_jbxx_record A
+inner join  sams_factdata.dm_gb8561 B on substring(A.przwm,1,3)=B.dm
+set A.przwmc=B.print_mc;
+-- 刷职称对应的职级 zjm zjmc
+update sams_data.jg_jbxx_record A
+inner join  sams_factdata.DM_ZJM B on substring(A.przwm,3,1)=B.dm
+set A.zjm=B.dm,A.zjmc=B.mc;
+END

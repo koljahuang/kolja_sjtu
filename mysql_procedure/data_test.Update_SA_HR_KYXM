@@ -1,0 +1,187 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_SA_HR_KYXM`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+    truncate data_test.SA_HR_KYXM_NEWITEM;
+	truncate data_test.SA_HR_KYXM_DK;
+
+
+ 	create temporary table data_test.SA_HR_KYXM_NOW like data_test.SA_HR_KYXM_BEFORE;
+    insert into data_test.SA_HR_KYXM_NOW (gh, xm, cdxmm, xmlx, xmzgbm, xmlydw, xmly, xmjf,
+                                      xmjfly, xmxk, xmxk_2, xmejxk, xmejxk_2, xmqsny, xmzzny,
+                                      xmwcqk, pm, brjsm, jdjl, jddw, kygzl, kfgzl, cglx, cgxy,
+                                      cgjj, zktxmm, XM_WID, ZKT_WID, XMBH, CWBH, PZH, zktfzrgh,
+                                      zktfzrxm, xmfzrgh, xmfzrxm, ZKTHTJE)
+    select zkt.XMFZRGH as gh,zkt.xmfzrxm as xm,jbxx.xmmc,yj.xmlx,dm.C_NAME,jbxx.WTDW as xmlydw,jbxx.XMLY_TJ as xmly,
+           round(jbxx.HTJF,1) as xmjf,jbxx.XMLY_TJ as xmjfly,jbxx.XKML,rpad(replace(jbxx.EJXK,'.',''),5,'0'),
+           jbxx.XMLB,jbxx.XMEJLB,jbxx.KSRQ,jbxx.JSRQ,
+           (case jbxx.jtzt when '1' then '在研' when '2' then '结题'
+               when '3' then '终止' when '4' then '转出' else '' end) as xmwcqk,
+           '1' as pm,'110' as brjsm,null as jdjl,null as jddw, null as kygzl,null as kfgzl, null as cglx,
+           null as cgxy, null as cgjj, zkt.ZKTMC,jbxx.WID,zkt.wid,jbxx.xmbh,jbxx.jfkkh as cwbh,
+           jbxx.PZH,zkt.XMFZRGH as zktfzrgh,zkt.XMFZRXM as zktfzrxm,jbxx.XMFZRGH,jbxx.XMFZRXM,round(zkt.ZKTHTJE,1)
+    from sams_factdata.t_xm_jbxx jbxx
+    inner join sams_factdata.t_ky_xmzkt zkt ON zkt.XM_WID=jbxx.wid
+    left join sams_data.xm_zkthz_show xz ON jbxx.WID = xz.XM_WID and zkt.XMFZRGH=xz.gh
+    left join sams_factdata.v_dm_bm dm on dm.C_ID=jbxx.XMSSXY
+    left join data_test.t_dm_xm_yjlb yj on jbxx.yjlb=yj.dm
+    where (xz.xmfl1 not like '军%' or xz.xmfl1 is null) and jbxx.SHZT=2
+            and zkt.XMFZRGH!='******' and (jbxx.del_mark='N' or jbxx.del_mark is null)
+
+    union
+
+    select cy.CYGH,cy.CYXM,jbxx.XMMC,yj.xmlx,dm.C_NAME,jbxx.WTDW as xmlydw,jbxx.XMLY_TJ as xmly,
+           round(jbxx.HTJF,1) as xmjf,jbxx.XMLY_TJ as xmjfly,jbxx.XKML,rpad(replace(jbxx.EJXK,'.',''),5,'0'),
+           jbxx.XMLB,jbxx.XMEJLB,jbxx.KSRQ,jbxx.JSRQ,
+           (case jbxx.jtzt when '1' then '在研' when '2' then '结题'
+               when '3' then '终止' when '4' then '转出' else '' end) as xmwcqk,
+           '' as pm,'130' as brjsm,null as jdjl,null as jddw, null as kygzl,null as kfgzl, null as cglx,
+           null as cgxy, null as cgjj, xz.xmmc as zktxmm,jbxx.WID,xz.wid as zkt_wid,jbxx.XMBH,cy.cwbh as cwbh,jbxx.PZH,
+           zkt.XMFZRGH as zktfzrgh,zkt.XMFZRXM as zktfzrxm, jbxx.XMFZRGH,jbxx.XMFZRXM,round(zkt.ZKTHTJE,1)
+    from sams_factdata.t_xm_jbxx jbxx
+    inner join (
+        #select CYGH,CYXM,XM_WID
+        #from sams_factdata.T_XM_XMCY
+        #where cypm!='1'
+        select a.user_id as cygh,a.user_name cyxm,b.WID as xm_wid, a.finance_no as cwbh
+        from sams_data.xm_project_ext a
+        inner join sams_factdata.t_xm_jbxx b
+        on a.project_no=b.XMBH
+        where a.status='77'
+        union
+        select fp.gh,jg.XM,jbxx.WID,fp.jfkkh
+        from sams_data.zkt_cw_fp fp
+        inner join sams_factdata.t_xm_jbxx jbxx
+        on fp.xmbh=jbxx.xmbh
+        inner join sams_factdata.jg_jbxx jg
+        on fp.gh=jg.GH
+        where fp.xmbh is not null
+        group by fp.gh,fp.xmbh
+        ) cy
+        on jbxx.WID=cy.xm_wid and jbxx.Xmfzrgh!=cy.cygh
+    left join sams_data.xm_zkthz_show xz ON jbxx.WID = xz.XM_WID and xz.jfkkh=cy.cwbh
+    left join sams_factdata.t_ky_xmzkt zkt ON zkt.wid=xz.wid
+    left join sams_factdata.v_dm_bm dm on dm.C_ID=jbxx.XMSSXY
+    left join data_test.t_dm_xm_yjlb yj on jbxx.yjlb=yj.dm
+    where not exists(select wid from sams_factdata.t_ky_xmzkt zkt where cy.XM_WID=zkt.xm_wid and cy.cygh=zkt.xmfzrgh)
+      and (xz.xmfl1 not like '军%' or xz.xmfl1 is null) and jbxx.shzt=2
+      and cy.CYGH!='******' and (jbxx.del_mark='N' or jbxx.del_mark is null)
+
+	union
+
+	select xz.gh as gh,xz.xmfzrxm as xm,xz.xmmc,null as xmlx,b.C_NAME,xz.xmly as xmlydw,null as xmly,
+           round(xz.htjf,1) as xmjf,null as xmjfly,'' as xmxk,'' as xmxk_2,
+           '' as xmejxk,'' as xmejxk_2,xz.KSRQ,xz.JSRQ,
+           xz.jtzt as xmwcqk,
+           '1' as pm,if(xz.xmxz='参加','130','110') as brjsm,null as jdjl,null as jddw, null as kygzl,null as kfgzl, null as cglx,
+           null as cgxy, null as cgjj, xz.xmmc_main,'学院自定义导入数据','',xz.xmbh,xz.jfkkh as cwbh,
+           xz.PZH,xz.gh as zktfzrgh,xz.XMFZRXM as zktfzrxm,xz.gh,xz.XMFZRXM,round(xz.htjf,1)
+    from sams_data.xm_zkthz_show xz
+    left join sams_factdata.v_dm_bm b on xz.superiorfacultycode=b.C_ID
+    where (xz.xmfl1 not like '军%' or xz.xmfl1 is null) and xz.is_dr='1'
+            and xz.gh!='******' 
+	
+	union
+
+	select cy.user_id as gh,cy.user_name as xm,xz.xmmc,null as xmlx,b.C_NAME,xz.xmly as xmlydw,null as xmly,
+           round(xz.htjf,1) as xmjf,null as xmjfly,'' as xmxk,'' as xmxk_2,
+           '' as xmejxk,'' as xmejxk_2,xz.KSRQ,xz.JSRQ,
+           xz.jtzt as xmwcqk,
+           ifnull(cy.ranking,'') as pm,'130' as brjsm,null as jdjl,null as jddw, null as kygzl,null as kfgzl, null as cglx,
+           null as cgxy, null as cgjj, xz.xmmc_main,'学院自定义导入数据','',xz.xmbh,xz.jfkkh as cwbh,
+           xz.PZH,xz.gh as zktfzrgh,xz.XMFZRXM as zktfzrxm,xz.gh,xz.XMFZRXM,round(xz.htjf,1)
+    from sams_data.xm_zkthz_show xz
+    inner join sams_data.xm_project_ext cy on xz.xmbh=cy.project_no and xz.jfkkh=ifnull(cy.finance_no,'') and cy.status=77
+    left join sams_factdata.v_dm_bm b on xz.superiorfacultycode=b.C_ID
+    where (xz.xmfl1 not like '军%' or xz.xmfl1 is null) and xz.is_dr='1'
+            and xz.gh!='******'
+	;
+
+
+	insert into data_test.SA_HR_KYXM_NEWITEM
+	(id, gh, xm, cdxmm, xmlx, xmzgbm, xmlydw, xmly, xmjf, xmjfly,
+	 xmxk, xmxk_2, xmejxk, xmejxk_2, xmqsny, xmzzny, xmwcqk, pm,
+	 brjsm, jdjl, jddw, kygzl, kfgzl, cglx, cgxy, cgjj, zktxmm,
+	 XM_WID, ZKT_WID, XMBH, CWBH, PZH, zktfzrgh, zktfzrxm, xmfzrgh, xmfzrxm, ZKTHTJE)
+	select id, gh, xm, cdxmm, xmlx, xmzgbm, xmlydw, xmly, xmjf, xmjfly,
+	 xmxk, xmxk_2, xmejxk, xmejxk_2, xmqsny, xmzzny, xmwcqk, pm,
+	 brjsm, jdjl, jddw, kygzl, kfgzl, cglx, cgxy, cgjj, zktxmm,
+	 XM_WID, ZKT_WID, XMBH, CWBH, PZH, zktfzrgh, zktfzrxm, xmfzrgh, xmfzrxm, ZKTHTJE
+	from data_test.SA_HR_KYXM_NOW A
+    where not exists(select * from data_test.SA_HR_KYXM_BEFORE B where A.XM_WID=B.XM_WID and A.gh=B.gh and A.ZKT_WID=B.ZKT_WID);
+
+	####  以防同步失败，需备份要同步的数据
+	insert into data_test.SA_HR_KYXM_NEWITEM_BAK (gh, xm, cdxmm, xmlx, xmzgbm, xmlydw, xmly, xmjf,
+	                                              xmjfly, xmxk, xmxk_2, xmejxk, xmejxk_2, xmqsny,
+	                                              xmzzny, xmwcqk, pm, brjsm, jdjl, jddw, kygzl, kfgzl,
+	                                              cglx, cgxy, cgjj, zktxmm, XM_WID, ZKT_WID, XMBH, CWBH,
+	                                              PZH, zktfzrgh, zktfzrxm, xmfzrgh, xmfzrxm, ZKTHTJE)
+	select gh, xm, cdxmm, xmlx, xmzgbm, xmlydw, xmly, xmjf,
+	                                              xmjfly, xmxk, xmxk_2, xmejxk, xmejxk_2, xmqsny,
+	                                              xmzzny, xmwcqk, pm, brjsm, jdjl, jddw, kygzl, kfgzl,
+	                                              cglx, cgxy, cgjj, zktxmm, XM_WID, ZKT_WID, XMBH, CWBH,
+	                                              PZH, zktfzrgh, zktfzrxm, xmfzrgh, xmfzrxm, ZKTHTJE
+	from data_test.SA_HR_KYXM_NEWITEM;
+
+	truncate data_test.SA_HR_KYXM_BEFORE;
+    insert into data_test.SA_HR_KYXM_BEFORE
+	select *
+	from data_test.SA_HR_KYXM_NOW A;
+
+	drop temporary table data_test.SA_HR_KYXM_NOW;
+
+
+	#################################################
+
+	insert into data_test.SA_HR_KYXM_DK(gh, xm, dkje, cwbh, dksj, xmbh)
+    select A.gh,A.name,A.dkje,A.jfkkh,replace(substring(A.p_rzsj,1,10),'-','.') as dksj,A.xmbh
+	from sams_data.zkt_cw_fp A
+    inner join
+    (select distinct gh,name, xmbh,substring(p_rzsj,1,4) as year, jfkkh
+    from sams_data.zkt_cw_fp
+    where (xmfl not like '军%' or xmfl is null) and gh is not null and gh!='' and
+          (update_datetime>date_sub(current_timestamp, interval 1 day)
+           or create_datetime>date_sub(current_timestamp, interval 1 day))
+        and (superiorfacultycode!='03000' or superiorfacultycode is null)
+        ) B
+    on A.gh=B.gh and A.xmbh=B.xmbh and substring(A.p_rzsj,1,4)=B.year and A.name=B.name and A.jfkkh=B.jfkkh
+	where A.name is not null and A.name!=''
+	  and A.xmbh is not null and A.xmbh!=''
+	  and A.p_rzsj is not null
+	  and A.jfkkh is not null and A.jfkkh!='';
+
+	insert into data_test.SA_HR_KYXM_DK(gh, xm, dkje, cwbh, dksj, xmbh)
+    select A.gh,A.name,A.dkje,A.jfkkh,replace(substring(A.fpsj,1,10),'-','.') as dksj,A.xmbh
+	from sams_data.zkt_cw_fp A
+    inner join
+    (select distinct gh,name, xmbh,substring(fpsj,1,4) as year, jfkkh
+    from sams_data.zkt_cw_fp
+    where (xmfl not like '军%' or xmfl is null) and gh is not null and gh!='' and
+          (update_datetime>date_sub(current_timestamp, interval 1 day)
+           or create_datetime>date_sub(current_timestamp, interval 1 day))
+        and (superiorfacultycode='03000' or superiorfaculty='电子信息与电气工程学院')
+        ) B
+    on A.gh=B.gh and A.xmbh=B.xmbh and substring(A.fpsj,1,4)=B.year and A.name=B.name and A.jfkkh=B.jfkkh
+	where A.name is not null and A.name!=''
+	  and A.xmbh is not null and A.xmbh!=''
+	  and A.fpsj is not null
+	  and A.jfkkh is not null and A.jfkkh!='';
+
+	####  以防同步失败，需备份要同步的数据
+    insert into data_test.SA_HR_KYXM_DK_BAK (gh, xm, dkje, cwbh, dksj, xmbh)
+    select gh, xm, dkje, cwbh, dksj, xmbh
+    from data_test.SA_HR_KYXM_DK a
+    where not exists(select * from data_test.SA_HR_KYXM_DK_BAK b
+    where b.gh=a.gh and b.xmbh=a.xmbh and b.dkje=a.dkje and b.dksj=a.dksj);
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('30','Update_SA_HR_KYXM','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('30','Update_SA_HR_KYXM','0',now(),'执行成功');
+	END IF;
+END

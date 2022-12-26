@@ -1,0 +1,77 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_xs_prp`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+    create temporary table sams_student.tmp_xs_prp like sams_student.xs_prp;
+
+    insert into sams_student.tmp_xs_prp
+        (stuno, stuname, teacherinfo, projectid, ProjectName,
+         englishname, ProjectType, PlanBeginTime, PlanEndTime,
+         PlanEndtime_defined, xn, xq, projectstate, content,
+         SchoolOpinionScore, SchoolOpinion, AdvisorOpinion, DeptOpinion,
+         studentnum, studentsinfo, jwccredithour, classhour, qs,
+         finalscore, SCBJ, bz, SJC, score, UserType, ItemTerm,
+         BatchName, BatchID, ProposalXueFen, XueYuanLXOpinion,
+         XueXiaoLXOpinion, JieTiID, XueYuanJTOpinion, XueXiaoJTOpinion,
+         Qrbz)
+    select substring_index(info.student,'/',-1) as stuno,
+           substring_index(info.student,'/',1) as stuname,
+           group_concat(concat(name,'/',rscgh)) as teacherinfo,
+           projectid, ProjectName, englishname, ProjectType,
+           PlanBeginTime, PlanEndTime, PlanEndtime_defined, xn, xq, projectstate,
+           content, SchoolOpinionScore, SchoolOpinion, AdvisorOpinion, DeptOpinion,
+           studentnum, studentsinfo, jwccredithour, classhour, qs, finalscore,
+           SCBJ, bz, SJC, score, UserType, ItemTerm, BatchName, BatchID,
+           ProposalXueFen, XueYuanLXOpinion, XueXiaoLXOpinion, JieTiID,
+           XueYuanJTOpinion, XueXiaoJTOpinion, Qrbz
+    from(
+    select
+        rscgh, a.name, projectid, ProjectName, englishname, ProjectType,
+        PlanBeginTime, PlanEndTime, PlanEndtime_defined, xn, xq, projectstate,
+        content, SchoolOpinionScore, SchoolOpinion, AdvisorOpinion, DeptOpinion,
+        studentnum, studentsinfo, jwccredithour, classhour, qs, finalscore,
+        SCBJ, bz, SJC, score, UserType, ItemTerm, BatchName, BatchID,
+        ProposalXueFen, XueYuanLXOpinion, XueXiaoLXOpinion, JieTiID,
+        XueYuanJTOpinion, XueXiaoJTOpinion, Qrbz,
+        substring_index(substring_index(a.studentsinfo,',',b.help_topic_id + 1),',',-1) as student
+    from
+        sams_factdata.vwPPAadvisor a
+    inner join mysql.help_topic b
+        on b.help_topic_id < (length(a.studentsinfo)-length(REPLACE (a.studentsinfo, ',', ''))+1)) info
+    group by substring_index(info.student,'/',-1),projectid;
+
+    insert into sams_student.xs_prp
+        (stuno, stuname, teacherinfo, projectid, ProjectName,
+         englishname, ProjectType, PlanBeginTime, PlanEndTime,
+         PlanEndtime_defined, xn, xq, projectstate, content,
+         SchoolOpinionScore, SchoolOpinion, AdvisorOpinion, DeptOpinion,
+         studentnum, studentsinfo, jwccredithour, classhour, qs,
+         finalscore, SCBJ, bz, SJC, score, UserType, ItemTerm,
+         BatchName, BatchID, ProposalXueFen, XueYuanLXOpinion,
+         XueXiaoLXOpinion, JieTiID, XueYuanJTOpinion, XueXiaoJTOpinion,
+         Qrbz)
+    select stuno, stuname, teacherinfo, projectid, ProjectName,
+         englishname, ProjectType, PlanBeginTime, PlanEndTime,
+         PlanEndtime_defined, xn, xq, projectstate, content,
+         SchoolOpinionScore, SchoolOpinion, AdvisorOpinion, DeptOpinion,
+         studentnum, studentsinfo, jwccredithour, classhour, qs,
+         finalscore, SCBJ, bz, SJC, score, UserType, ItemTerm,
+         BatchName, BatchID, ProposalXueFen, XueYuanLXOpinion,
+         XueXiaoLXOpinion, JieTiID, XueYuanJTOpinion, XueXiaoJTOpinion,
+         Qrbz
+    from sams_student.tmp_xs_prp A
+    where not exists(select * from sams_student.xs_prp B where B.stuno=A.stuno and B.projectid=A.projectid);
+
+    drop temporary table sams_student.tmp_xs_prp;
+
+    IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('33','Update_xs_prp','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('33','Update_xs_prp','0',now(),'执行成功');
+	END IF;
+END

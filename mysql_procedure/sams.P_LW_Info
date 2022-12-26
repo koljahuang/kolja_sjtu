@@ -1,0 +1,245 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_LW_Info`()
+BEGIN
+	#Routine body goes here...
+
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+			-- 每日更新论著库表(之前的人事系统数据)，按照论文发表分类码分割,该sql已经弃用
+			
+			-- lzk_odl 原先是下面用到的 已改成lzk 直接使用，弃用
+
+-- 			truncate sams_data.lzk_odl;
+-- 			
+-- 			insert into sams_data.lzk_odl
+-- 			select uuid(),a.*,substring_index(substring_index(a.lwfbflm,',',b.help_topic_id+1),',',-1)
+-- 			from (select * from sams_factdata.lzk where lzmc != 'no') a
+-- 			join mysql.help_topic b
+-- 			on b.help_topic_id < (length(a.lwfbflm) - length(replace(a.lwfbflm,',',''))+1);   
+-- 			
+-- 			delete from sams_data.lzk_odl where lwfbflm1 is null or length(lwfbflm1)=0;
+-- 			insert into sams_data.lzk_odl
+-- 			select uuid() ,a.* , ''   from sams_factdata.lzk a where lzmc != 'no' and (lwfbflm is null or length(lwfbflm)=0); 
+
+			-- 每日更新论著库概览表 给校长看，影响因子和引用次数分布
+
+			truncate sams_data.lw_gl_bdl;
+			insert into sams_data.lw_gl_bdl (id,year,lzlbm,cbh,lwfbflm,xkmlkj,lwnum,ltycs,mtycs,mtmtycs,htycs,gbylw,lqkyxyz,mqkyxyz,mtmqkyxyz,hqkyxyz)
+			select uuid(),substring(fbny,1,4) as year,lzlbm,cbh,lwfbflm,xkmlkj,
+			count(distinct lzmc) as lwnum,
+			count(distinct case when (tycs>=0 and tycs<10)  then lzmc end) as ltycs,
+			count(distinct case when tycs>=10 and tycs<50 then lzmc end) as mtycs,
+			count(distinct case when tycs>=50 and tycs<100 then lzmc end) as mtmtycs,
+			count(distinct case when tycs>=100 then lzmc end) as htycs,
+			count(distinct case when SFESIGBYLW=1 then lzmc end) as gbylw,
+			count(distinct case when (qkyxyz>='0' and qkyxyz<'2') then lzmc end) as lqkyxyz,
+			count(distinct case when qkyxyz>='2' and qkyxyz<'3' then lzmc end) as mqkyxyz,
+			count(distinct case when qkyxyz>='3' and qkyxyz<'5' then lzmc end) as mtmqkyxyz,
+			count(distinct case when qkyxyz>='5' then lzmc end) as hqkyxyz
+			from sams_factdata.lzk
+			where fbny is not null  and substring(fbny,1,4)!='接收' and scbj='N'
+			group by substring(fbny,1,4);
+
+			-- 论文概览adl，按年影响因子和引用次数分布中间表，校长角色
+
+			truncate sams_data.lw_gl_adl;
+			insert into sams_data.lw_gl_adl
+			select uuid(),substring(fbny,1,4) as year,lzlbm,lwfbflm,xkmlkj,
+			count(distinct lzmc) as lwnum,
+			count(distinct case when (tycs>=0 and tycs<10)  then lzmc end) as ltycs,
+			count(distinct case when tycs>=10 and tycs<50 then lzmc end) as mtycs,
+			count(distinct case when tycs>=50 and tycs<100 then lzmc end) as mtmtycs,
+			count(distinct case when tycs>=100 then lzmc end) as htycs,
+			count(distinct case when SFESIGBYLW=1 then lzmc end) as gbylw,
+			count(distinct case when (qkyxyz>='0' and qkyxyz<'2')  then lzmc end) as lqkyxyz,
+			count(distinct case when qkyxyz>='2' and qkyxyz<'3' then lzmc end) as mqkyxyz,
+			count(distinct case when qkyxyz>='3' and qkyxyz<'5' then lzmc end) as mtmqkyxyz,
+			count(distinct case when qkyxyz>='5' then lzmc end) as hqkyxyz
+			from sams_factdata.lzk
+			where    fbny is not null and substring(fbny,1,4)!='接收' and scbj='N'
+			group by substring(fbny,1,4);
+
+			-- 论文分览adl，影响因子和引用次数按年分布中间表，院长、系主任角色
+
+			truncate sams_data.lw_fl_adl;
+			insert into sams_data.lw_fl_adl
+			select uuid(),gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,
+			substring(fbny,1,4) as year,lzlbm,lwfbflm,xkmlkj,
+			count(distinct lzmc) as lwnum,
+			count(distinct case when (tycs>=0 and tycs<10)  then lzmc end) as ltycs,
+			count(distinct case when tycs>=10 and tycs<50 then lzmc end) as mtycs,
+			count(distinct case when tycs>=50 and tycs<100 then lzmc end) as mtmtycs,
+			count(distinct case when tycs>=100 then lzmc end) as htycs,
+			count(distinct case when SFESIGBYLW=1 then lzmc end) as gbylw,
+			count(distinct case when (qkyxyz>='0' and qkyxyz<'2')  then lzmc end) as lqkyxyz,
+			count(distinct case when qkyxyz>='2' and qkyxyz<'3' then lzmc end) as mqkyxyz,
+			count(distinct case when qkyxyz>='3' and qkyxyz<'5' then lzmc end) as mtmqkyxyz,
+			count(distinct case when qkyxyz>='5' then lzmc end) as hqkyxyz,curdate()
+			from sams_factdata.lzk a
+			left join sams.hr_basic b
+			on a.gh = b.userid
+			where    fbny is not null and b.usertype='C' and b.scbj='N'  and substring(fbny,1,4)!='接收' and a.scbj='N'
+			group by gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,substring(fbny,1,4);
+
+			-- 论文发表分类adl，论文收录机构按年统计表，院长、系主任角色
+
+			truncate sams_data.lw_fbfl_adl;
+			insert into sams_data.lw_fbfl_adl
+			select uuid(),a.gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,substring(a.fbny,1,4) ,
+			count(distinct case when a.lwfbflm like '%12%' then a.lzmc end) as SCIE_num,
+			count(distinct case when a.lwfbflm like '%13%' then a.lzmc end) as EI_num,
+			count(distinct case when a.lwfbflm like '%15%' or a.lwfbflm like '%22%' then lzmc end) as GNHX_num,
+			count(distinct case when a.lwfbflm like '%12%' and a.lwfbflm like '%13%'  then lzmc end) as SCIEI_num,
+			count(distinct case when a.lwfbflm  like '%29%'  then a.lzmc end) as CSSCI_num,
+			count(distinct case when  (a.lwfbflm not like '%12%' and a.lwfbflm not like '%13%' and a.lwfbflm not like '%15%' and a.lwfbflm not like '%29%' ) or  a.lwfbflm is  null then a.lzmc end) as other_num,
+			curdate()
+			from sams_factdata.lzk a
+			left join sams.hr_basic b
+			on a.gh = b.userid
+			where   a.fbny is not null and substring(a.fbny,1,4)!='接收' and a.scbj='N' and b.usertype='C' and b.scbj='N'
+			group by a.gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,substring(a.fbny,1,4) ;
+
+			-- 论文发表分类概览adl，论文收录机构按年统计表，校长角色
+
+			truncate sams_data.lw_fbfl_gl_adl;
+			insert into sams_data.lw_fbfl_gl_adl
+			select uuid(),substring(fbny,1,4) ,
+			count(distinct case when lwfbflm like '%12%' then lzmc end) as SCIE_num,
+			count(distinct case when lwfbflm like '%13%' then lzmc end) as EI_num,
+			count(distinct case when lwfbflm like '%15%' then lzmc end) as GNHX_num,
+			count(distinct case when lwfbflm like '%12%' and lwfbflm like '%13%' then lzmc end) as SCIEI_num,
+			count(distinct case when lwfbflm like '%29%' then lzmc end) as CSSCI_num,
+			count(distinct case when (lwfbflm not like '%12%' and lwfbflm not like '%13%' and lwfbflm not like '%15%' and lwfbflm not like '%29%' ) or  lwfbflm is  null then lzmc end) as other_num,
+			curdate()
+			from sams_factdata.lzk
+			where   fbny is not null and substring(fbny,1,4)!='接收' and scbj='N'
+			group by substring(fbny,1,4) ;
+
+			-- 论文论著分类概览adl，论文、专利类型按年统计表
+
+			truncate sams_data.lzlb_lzfl_gl_adl;
+			insert into sams_data.lzlb_lzfl_gl_adl
+			select uuid(),a.year,
+			a.qklwNum,a.hylwNum,a.otherlwNum,a.zzNum,b.fmzlNum,b.syxxzlNum,b.zlzNum,a.otherNum,b.PCTNum,curdate()
+			from
+			(
+			select
+			substring(fbny, 1, 4) as year,
+			count(distinct (case when lzlbm = '61' 
+			then lzmc end))     as qklwNum,
+			count(distinct (case when lzlbm = '62' 
+			then lzmc end))     as hylwNum,
+			count(distinct case when lzlbm not in ('61','62') then lzmc end )    as otherlwNum,
+			count(distinct (case when lzlbm like '1%'
+			then lzmc end))     as zzNum,
+			count(distinct (case when lzlbm like '2%' or lzlbm like '4%' or lzlbm like '5%' or lzlbm like '3%'
+			then lzmc end))     as otherNum
+			from sams_factdata.lzk
+			where fbny is not null and substring(fbny,1,4)!='接收' and scbj='N'
+			group by substring(fbny, 1, 4)
+			) a
+			left join
+			(
+			select
+			uuid(), a.year,a.fmzlNum,a.syxxzlNum,ifnull(b.PCTNum,0) PCTNum,a.otherzlNum,(ifnull(a.zlzNum,0) + ifnull(b.ZPCTNum,0)) as zlzNum,curdate()
+			from
+			(select
+			if(length(ifnull(shouqrq,0))<4,if(length(ifnull(sqny,0))<4,0,substring(ifnull(sqny,0), 1, 4)),substring(ifnull(shouqrq,0), 1, 4)) as year,
+			count(distinct ( case when zllbm='1' then zlmc end))   as fmzlNum,
+			count(distinct (case when zllbm='2' then zlmc end))  as syxxzlNum,
+			0, count(distinct (case when zllbm not in ('1', '2')  then zlmc end))  as otherzlNum,
+			count(distinct zlmc)  as zlzNum
+			from sams_factdata.sr_patent
+			where qr in ('2','99') and  zlmc !='no' and scbj='N'
+			group by if(length(ifnull(shouqrq,0))<4,if(length(ifnull(sqny,0))<4,0,substring(ifnull(sqny,0), 1, 4)),substring(ifnull(shouqrq,0), 1, 4))
+			) as a
+			left join
+			(
+			select
+			if(length(ifnull(gjsqr,0))<4,0,substring(ifnull(gjsqr,0),1,4)) as year,
+			0                      as fmzlNum,
+			0                      as syxxzlNum,
+			count(distinct zlmc)   as PCTNum,
+			0                      as otherzlNum,
+			count(distinct zlmc)   as ZPCTNum
+			from sams_factdata.PCT
+			group by if(length(ifnull(gjsqr,0))<4,0,substring(ifnull(gjsqr,0),1,4))
+			) as b
+			on a.year = b.year
+			) as b
+			on a.year=b.year;
+
+			-- 论文类型按年统计表,系主任、院长角色
+			truncate sams_data.lzlb_lzfl_mdl;
+			insert into sams_data.lzlb_lzfl_mdl
+			select uuid(),gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,substring(fbny,1,4) as year,
+			count(distinct (case when lzlbm='61'  then lzmc end )) as qklwNum,
+			count(distinct (case when lzlbm='62'  then lzmc end )) as hylwNum,
+			count(distinct case when  lzlbm not in ('61','62') then lzmc end) as otherlwNum,
+			count(distinct (case when lzlbm like '1%' then lzmc end )) as zzNum,
+			count(distinct (case when lzlbm like '2%' or lzlbm  like '4%' or lzlbm  like '5%' or lzlbm  like '3%' then lzmc end )) as otherNum,
+			curdate()
+			from sams_factdata.lzk as a
+			left join sams.hr_basic b
+			on a.gh = b.userid
+			where b.usertype='C' and b.scbj='N'   and fbny is not null and substring(fbny,1,4)!='接收' and a.scbj='N'
+			group by gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,substring(fbny,1,4);
+
+
+			-- 分类统计每个人的专利数
+
+			truncate sams_data.patent_mdl;
+			insert into sams_data.patent_mdl
+			select uuid(),a.gh,a.faculty,a.facultycode,a.superiorfacultycode,a.superiorfaculty,a.year,sum(a.fmzlNum),sum(a.syxxzlNum),sum(a.otherzlNum),
+			sum(a.PCTNum),sum(zlzNum),curdate()
+			from
+			(
+			select gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,if(length(ifnull(shouqrq,0))<4,if(length(ifnull(sqny,0))<4,0,substring(ifnull(sqny,0), 1, 4)),substring(ifnull(shouqrq,0), 1, 4))  as  year,
+			count( distinct ( case when zllbm='1' then zlmc end )) as fmzlNum,
+			count( distinct ( case when zllbm='2' then zlmc end )) as syxxzlNum,
+			count( distinct ( case when zllbm not in ('1','2') or zllbm is null then zlmc end )) as otherzlNum,0 as PCTNum,count(distinct zlmc) as zlzNum
+			from sams_factdata.sr_patent as a
+			left join sams.hr_basic b
+			on a.gh = b.userid
+			where b.usertype='C' and b.scbj='N' and qr in ('2','99') and  a.zlmc !='no' and a.scbj='N'
+			group by gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,if(length(ifnull(shouqrq,0))<4,if(length(ifnull(sqny,0))<4,0,substring(ifnull(sqny,0), 1, 4)),substring(ifnull(shouqrq,0), 1, 4))
+			union
+			select xmfzrgh as gh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,if(length(ifnull(gjsqr,0))<4,0,substring(ifnull(gjsqr,0),1,4)) as year,
+			0 as fmzlNum,0 as syxxzlNum,0 as otherzlNum,count(distinct zlmc) as PCTNum,count(distinct zlmc) as zlzNum
+			from sams_factdata.PCT as a
+			left join sams.hr_basic b
+			on a.xmfzrgh = b.userid
+			where b.usertype='C' and b.scbj='N' and gjsqr is not null
+			group by xmfzrgh,b.faculty,b.facultycode,b.superiorfacultycode,b.superiorfaculty,if(length(ifnull(gjsqr,0))<4,0,substring(ifnull(gjsqr,0),1,4)) 
+			) as a
+			group by a.gh,a.faculty,a.facultycode,a.superiorfacultycode,a.superiorfaculty,a.year;
+
+			-- 各个院系论文专利分览adl
+
+			truncate sams_data.lzlb_lzfl_adl;
+			truncate  sams_data.lzlb_lzfl_adl;
+			insert into sams_data.lzlb_lzfl_adl
+			select uuid(),gh,a.faculty,a.facultycode,a.superiorfacultycode,a.superiorfaculty,a.year,
+			sum(qklwNum),sum(hylwNum),sum(otherlwNum),sum(zzNum),sum(fmzlNum),sum(syxxzlNum),sum(otherzlNum),sum(otherNum),sum(PCTNum),curdate()
+			from
+			(
+			select id,a.gh,a.faculty,a.facultycode,a.superiorfacultycode,a.superiorfaculty,a.year,
+			a.qklwNum,a.hylwNum,a.otherlwNum,a.zzNum,0 as fmzlNum,0 as syxxzlNum,0 as otherzlNum,a.otherNum,0 as PCTNum
+			from sams_data.lzlb_lzfl_mdl a -- 论文
+			union
+			select id,gh,faculty,facultycode,superiorfacultycode,superiorfaculty,year,
+			0 as qklwNum,0 as hylwNum,0 as otherlwNum,0 as zzNum,fmzlNum,syxxzlNum,otherzlNum,0 as otherNum,PCTNum
+			from sams_data.patent_mdl  -- 专利
+			) as a
+			group by gh,a.faculty,a.facultycode,a.superiorfacultycode,a.superiorfaculty,a.year;
+					
+					
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+		insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('5','P_LW_Info','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('5','P_LW_Info','0',now(),'执行成功');
+	END IF;
+END

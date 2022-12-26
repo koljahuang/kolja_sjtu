@@ -1,0 +1,37 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_avg_sample`()
+BEGIN
+	update sams_data.pjpf_info_avg A 
+inner join sams.QK_test B on A.bsid=B.l1 
+set kczxs=B.L2
+where A.tkdx='本科生' and B.L3=2;
+
+update sams_data.pjpf_info_avg A 
+inner join sams.QK_test B on A.bj=B.l1 
+set kczxs=B.L2
+where A.tkdx='研究生' and B.L3=1 ;
+
+update sams_data.jsks_info_avg A 
+inner join sams.QK_test B on A.bsid=B.l1 
+set xqxss=B.L2
+where A.tkdx='本科生' and B.L3=2;
+
+update sams_data.jsks_info_avg A 
+inner join sams.QK_test B on A.bj=B.l1 
+set xqxss=B.L2
+where A.tkdx='研究生' and B.L3=1 ;
+
+drop table sams_data.jsks_rcjh_info_avg;
+create table sams_data.jsks_rcjh_info_avg as
+select * from sams_data.jsks_rcjh_info;
+
+update sams_data.jsks_rcjh_info_avg A 
+inner join sams.QK_test B on A.bsid=B.l1 
+set xqxss=B.L2
+where A.tkdx='本科生' and B.L3=2 ;
+
+update sams_data.jsks_rcjh_info_avg A 
+inner join sams.QK_test B on A.bj=B.l1 
+set xqxss=B.L2
+where A.tkdx='研究生' and B.L3=1 ;
+
+END

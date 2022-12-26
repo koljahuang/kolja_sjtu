@@ -1,0 +1,22 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Run_classinfo`(IN v_year varchar(20))
+BEGIN
+   SELECT schoolyear, semester, count(*) into @v_xn, @v_xq, @count from sams_edu.gproj_schoolcalendar where begindate<DATE(now()) and enddate>DATE(now());
+   IF (@count)=1 THEN  -- 如果配置表中能查询到数据则执行数据处理作业
+      IF  ((@semester)<>'夏' and  (@semester)<>'寒') THEN  -- 如果正常学期周，则同步本学期数据
+      call P_Teacher_Class_Info(v_year,@v_xn,@v_xq);
+			
+      ELSE  -- 如果是假期，则同步本学期及下学期数据
+			-- SELECT schoolyear, semester, count(*)  from sams_edu.gproj_schoolcalendar where begindate<date_add(now(), interval 1 quarter) and enddate>date_add(DATE(now()), interval 1 quarter);
+      SELECT schoolyear, semester, count(*)  into @v_xn_1, @v_xq_1, @count_1 from sams_edu.gproj_schoolcalendar where begindate<date_add(now(), interval 1 quarter) and enddate>date_add(DATE(now()), interval 1 quarter);
+      call P_Teacher_Class_Info(v_year,@v_xn_1,@v_xq_1);
+			
+		-- 	SELECT schoolyear, semester, count(*) from sams_edu.gproj_schoolcalendar where begindate<date_sub(DATE(now()), interval 1 quarter) and enddate>date_sub(DATE(now()), interval 1 quarter);
+
+
+      SELECT schoolyear, semester, count(*)  into @v_xn_2, @v_xq_2, @count_2 from sams_edu.gproj_schoolcalendar where begindate<date_sub(DATE(now()), interval 1 quarter) and enddate>date_sub(DATE(now()), interval 1 quarter);
+      call P_Teacher_Class_Info(v_year,@v_xn_2,@v_xq_2);
+      END IF;
+   ELSE  -- 如果配置表中无数据，则记录日志表
+      insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('0','P_Teacher_Class_Info','1',DATE(now()),'当前时间不在校历范围内');
+   END IF;
+END

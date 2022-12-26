@@ -1,0 +1,20 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `update_xm_zkt_mkje`(IN v_id VARCHAR(100), IN v_mkje DECIMAL(20,6), IN v_bz VARCHAR(500))
+BEGIN
+	DECLARE p_pz_unino VARCHAR(32);
+	DECLARE p_jfkkh VARCHAR(100);
+	DECLARE pp_rzsj DATETIME;
+	DECLARE p_xmbh VARCHAR(100);
+	DECLARE p_userid VARCHAR(100);
+	-- 更新财务分配表
+	UPDATE sams_data.`zkt_cw_fp` SET mkje = v_mkje, p_mkje = v_mkje, p_kgje = p_dkje-v_mkje, kgje = dkje-v_mkje,bz = v_bz  WHERE `uuid` = v_id AND fp_status = '0';
+	-- 更新财务原始表T_KY_ALLOCATE
+	SELECT pz_unino, p_rzsj, jfkkh, xmbh, p_gh INTO p_pz_unino, pp_rzsj, p_jfkkh, p_xmbh, p_userid FROM sams_data.`zkt_cw_fp` WHERE `uuid` = v_id AND fp_status = '0';
+	UPDATE sams_factdata.T_KY_ALLOCATE SET mkje = v_mkje WHERE 
+		CASE WHEN p_pz_unino IS NULL OR LENGTH(p_pz_unino) = 0 THEN PRJ_CODE=p_jfkkh AND sdate=pp_rzsj 
+		ELSE PRJ_CODE=p_jfkkh AND sdate=pp_rzsj AND pz_unino = p_pz_unino END;
+	-- 更新xm_zkthz_show
+	UPDATE sams_data.`xm_zkthz_show` 
+		SET mkje = (SELECT SUM(IFNULL(ky.mkje, 0)) FROM sams_factdata.`V_KY_ALLOCATE` ky WHERE PRJ_CODE = p_jfkkh AND charge_sno = p_userid),
+		    kgje = (SELECT SUM(CONVERT(IFNULL(ky.inamt,0)/10000,DECIMAL(20,6))- CONVERT(IFNULL(ky.mkje,0), DECIMAL(20,6))) FROM sams_factdata.`V_KY_ALLOCATE` ky WHERE ky.PRJ_CODE = p_jfkkh AND ky.charge_sno = p_userid)
+		WHERE gh=p_userid AND xmbh = p_xmbh AND jfkkh = p_jfkkh;
+    END

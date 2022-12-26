@@ -1,0 +1,163 @@
+CREATE DEFINER=`sams`@`sams-%` PROCEDURE `update_teacher_info_ryyd`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+
+    truncate sams_data.teacher_info_ryyd;
+
+    insert into sams_data.teacher_info_ryyd(gh, xm, type, sex, birthday,lxsj, lzsj, txrq, swrq, poststime,
+                                             Old_Department_Code, New_Department_Code,
+                                             Old_JZLB, New_JZLB, Old_GWMC, New_GWMC,
+                                             Old_DZZW, New_DZZW, Old_DZZJ, New_DZZJ,
+                                             cause,superiorfacultycode,facultycode)
+    select basic_info.gh,basic_info.name,basic_info.type,basic_info.sex,basic_info.Birthday,
+           basic_info.lxsj,basic_info.lzsj,basic_info.txrq,basic_info.swrq,basic_info.poststime,
+           basic_info.Old_Department_Code,basic_info.New_Department_Code,
+           basic_info.Old_JZLB,basic_info.New_JZLB,
+           basic_info.Old_GWMC,basic_info.New_GWMC,
+           basic_info.Old_DZZW,basic_info.New_DZZW,
+           basic_info.Old_DZZJ,basic_info.New_DZZJ,
+           basic_info.Cause,hr.superiorfacultycode,hr.facultycode
+    from
+    (select gh, name, '4' as type, Sex, birthday,
+           null as lxsj, null as lzsj, null as txrq, null as swrq, PostsTime as poststime,
+           Old_Department_Code, New_Department_Code,
+           Old_JZLB, New_JZLB,
+           Old_GWMC,New_GWMC,
+           Old_DZZW,New_DZZW,
+           Old_DZZJ,New_DZZJ,
+           cause
+    from sams_factdata.RS_PostMobilization
+    where State>0 and TransferType='0'
+
+    union
+
+    select gh, name, '7' as type, Sex, birthday,
+           null as lxsj, null as lzsj, null as txrq, null as swrq, PostsTime as poststime,
+           Old_Department_Code, New_Department_Code,
+           Old_JZLB, New_JZLB,
+           Old_GWMC,New_GWMC,
+           Old_DZZW,New_DZZW,
+           Old_DZZJ,New_DZZJ,
+           cause
+    from sams_factdata.RS_PostMobilization
+    where State>=0 and TransferType='1'
+
+    union
+
+    select gh, name, '3' as type, Sex, birthday,
+           null as lxsj, null as lzsj, null as txrq, null as swrq, PostsTime as poststime,
+           Old_Department_Code, New_Department_Code,
+           Old_JZLB, New_JZLB,
+           Old_GWMC,New_GWMC,
+           Old_DZZW,New_DZZW,
+           Old_DZZJ,New_DZZJ,
+           cause
+    from sams_factdata.RS_BMNDD_SQ
+    where State>0
+
+    union
+
+    select gh, name, '2' as type, if(sex='1','男','女'), Birthday,
+           null , LiXiaoNianYue, null, null, null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           BCSM
+    from sams_factdata.HR_Dimission
+    where State in ('3','4','5') and AuditResult='审核通过'
+
+    union
+
+    select gh,xm,'1' as type, if(xbm='1','男','女'), CSRQ,
+           schoolny,null,null,null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null
+    from sams_factdata.jg_jbxx
+
+    union
+
+    select gh,xm,'5' as type, if(xbm='1','男','女'), CSRQ,
+           null,null,LTXNY,null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null
+    from sams_factdata.jg_jbxx
+    where RYZTM='2' or RYZTM='99'
+
+    union
+
+    select gh,xm,'6' as type, if(xbm='1','男','女'), CSRQ,
+           null,null,null,SWRQ,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null,null,
+           null
+    from sams_factdata.jg_jbxx
+    where RYZTM='3') basic_info
+    left join (select * from sams.hr_basic where usertype='C') hr
+    on basic_info.GH=hr.userid;
+		
+		update sams_data.teacher_info_ryyd 
+		set OLD_GWBD=concat(if(old_jzlb!=new_jzlb,concat(old_jzlb,'-'),''),if(old_dzzw!=new_dzzw,concat(old_dzzw,'-'),''),
+		if(old_gwmc!=new_gwmc,concat(old_gwmc,'-'),''),if(old_dzzj!=new_dzzj,old_dzzj,'')),
+		NEW_GWBD=concat(if(old_jzlb!=new_jzlb,concat(new_jzlb,'-'),''),if(old_dzzw!=new_dzzw,concat(new_dzzw,'-'),''),
+		if(old_gwmc!=new_gwmc,concat(new_gwmc,'-'),''),if(old_dzzj!=new_dzzj,new_dzzj,''))
+		where type='3' or type='4';
+		
+		update sams_data.teacher_info_ryyd 
+		set OLD_GWBD=trim(both '-' from OLD_GWBD),
+		NEW_GWBD=trim(both '-' from NEW_GWBD)
+		where type='3' or type='4';
+		
+		update sams_data.teacher_info_ryyd a
+		set Old_Department_Code=(case when a.Old_Department_Code='69200' then '61200'
+           when a.Old_Department_Code='50100X' then '50100'
+           when a.Old_Department_Code='50101X' then '50101'
+           when a.Old_Department_Code='50102X' then '50102'
+           when a.Old_Department_Code='62300X' then '62300'
+           when a.Old_Department_Code='80100X' then '93000'
+           when a.Old_Department_Code='80400X' then '93000'
+           when a.Old_Department_Code='80800X' then '93000'
+           when (a.Old_Department_Code='80501' or a.Old_Department_Code='80502') then '80000'
+           when a.Old_Department_Code='80501' then '80510'
+           when a.Old_Department_Code='80502' then '80500'
+           when a.Old_Department_Code='80500' then '80000'
+           else a.Old_Department_Code end),
+				New_Department_Code=(case when a.New_Department_Code='69200' then '61200'
+					 when a.New_Department_Code='50100X' then '50100'
+           when a.New_Department_Code='50101X' then '50101'
+           when a.New_Department_Code='50102X' then '50102'
+           when a.New_Department_Code='62300X' then '62300'
+           when a.New_Department_Code='80100X' then '93000'
+           when a.New_Department_Code='80400X' then '93000'
+           when a.New_Department_Code='80800X' then '93000'
+           when (a.New_Department_Code='80501' or a.New_Department_Code='80502') then '80000'
+           when a.New_Department_Code='80501' then '80510'
+           when a.New_Department_Code='80502' then '80500'
+           when a.New_Department_Code='80500' then '80000'
+           else a.New_Department_Code end)
+		 where Old_Department_Code is not null or New_Department_Code is not null;
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('42','update_teacher_info_ryyd','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('42','update_teacher_info_ryyd','0',now(),'执行成功');
+	END IF;
+END

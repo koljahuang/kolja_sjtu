@@ -1,0 +1,99 @@
+CREATE DEFINER=`root`@`localhost` PROCEDURE `P_U_YXKH_Auto_2020`(IN `v_year` INT,in `v_faqi_id` varchar(50),in `v_target_id` varchar(50))
+    COMMENT '二级单位考核自动生成指标明细'
+BEGIN
+    declare v_lastxn varchar(10);
+    declare v_nowxn  varchar(10);
+    set v_lastxn = concat((v_year-1),'-',v_year);
+    set v_nowxn = concat(v_year,'-',(v_year+1));
+        -- -----------------------J1主讲本科课程的教授占院系该群体的比例-------------------------------------
+        
+       -- 填充明细表
+    INSERT INTO `sams_factdata`.`yxkh_mx_course_professor` (`id`,`id_fq`,`superiorfaculty`,`superiorfacultycode`,`course_superiorfaculty`,`course_superiorfaculty_code`,
+               `school_year`,`term`,`course_name`,`user_name`,`print_mc`,`user_id`,`create_person_name`,`create_person_id`,`source_from`,`updatetime`,`createtime`)  
+     select so.id,v_faqi_id,so.superiorfaculty,so.superiorfacultycode,so.course_superiorfaculty,so.course_superiorfacultyCode,
+            so.school_year,so.term,so.course_name,so.user_name,so.print_mc,so.user_id,so.create_person_name,
+            so.create_person_id,so.source_from,null,now()
+     from
+    (SELECT t.superiorfaculty,t.superiorfacultycode,p.kkyx AS course_superiorfacultyCode,b.c_name AS course_superiorfaculty,
+    p.xn AS school_year,p.xq AS term,p.kcmc AS course_name,1 AS course_num,p.xm AS user_name,t.print_mc,p.rscgh AS user_id,
+    t.major_level AS major,'sys' AS create_person_name, 'sys' AS create_person_id,'sams_data.pjpf_info' AS source_from,
+     NOW() AS createtime,concat_ws('-',IFNULL(p.kh,''),IFNULL(p.rscgh,'')) as id
+     FROM sams_data.pjpf_info p 
+     LEFT JOIN sams_data.teacher_info_all_adl t ON p.rscgh=t.userid
+     LEFT JOIN sams_factdata.`v_dm_bm` b ON b.C_ID = p.kkyx
+     WHERE ((p.xn = v_lastxn AND (p.xq =2 OR p.xq=3)) OR (p.xn= v_nowxn AND p.xq=1))
+           and p.tkdx='本科生'
+           and t.zjm ='1'
+           ) as so 
+     on duplicate key update `id_fq` = v_faqi_id,`superiorfaculty` = so.superiorfaculty,`superiorfacultycode` = so.superiorfacultycode,
+               `course_superiorfaculty` = so.course_superiorfaculty,`course_superiorfaculty_code` = so.course_superiorfacultyCode,
+               `school_year` = so.school_year,`term` = so.term,`course_name` = so.course_name,
+               `user_name` = so.user_name,`print_mc` = so.print_mc,`user_id` = so.user_id,`create_person_name` = so.create_person_name,
+               `create_person_id` = so.create_person_id,`source_from` = so.source_from,`updatetime` = now() ;
+               
+    -- --------------------J2教授独自开设本科课程门数占院系本科课程总门数的比例-----------------------
+		
+		INSERT INTO `sams_factdata`.`yxkh_mx_alone_course_professor` (`id`,`id_fq`,`superiorfaculty`,`superiorfacultycode`,`course_superiorfaculty`,`course_superiorfacultyCode`,
+               `school_year`,`term`,`course_name`,`user_name`,`print_mc`,`user_id`,`create_person_name`,`create_person_id`,`source_from`,`updatetime`,`createtime`)  
+     select so.id,v_faqi_id,so.superiorfaculty,so.superiorfacultycode,so.course_superiorfaculty,so.course_superiorfacultyCode,
+            so.school_year,so.term,so.course_name,so.user_name,so.print_mc,so.user_id,so.create_person_name,
+            so.create_person_id,so.source_from,null,now()
+     from
+    (SELECT t.superiorfaculty,t.superiorfacultycode,p.kkyx AS course_superiorfacultyCode,b.c_name AS course_superiorfaculty,
+    p.xn AS school_year,p.xq AS term,p.kcmc AS course_name,1 AS course_num,p.xm AS user_name,t.zwzj as print_mc,p.rscgh AS user_id,
+    t.major_level AS major,'sys' AS create_person_name, 'sys' AS create_person_id,'sams_data.pjpf_info' AS source_from,
+     NOW() AS createtime,concat_ws('-',IFNULL(p.kh,''),IFNULL(p.rscgh,'')) as id
+     FROM sams_data.pjpf_info p 
+     LEFT JOIN sams_data.teacher_info_all_adl t ON p.rscgh=t.userid
+     LEFT JOIN sams_factdata.`v_dm_bm` b ON b.C_ID = p.kkyx
+     WHERE ((p.xn = v_lastxn AND (p.xq =2 OR p.xq=3)) OR (p.xn= v_nowxn AND p.xq=1))
+           and p.tkdx='本科生'
+           ) as so 
+     on duplicate key update `id_fq` = v_faqi_id,`superiorfaculty` = so.superiorfaculty,`superiorfacultycode` = so.superiorfacultycode,
+               `course_superiorfaculty` = so.course_superiorfaculty,`course_superiorfacultyCode` = so.course_superiorfacultyCode,
+               `school_year` = so.school_year,`term` = so.term,`course_name` = so.course_name,
+               `user_name` = so.user_name,`print_mc` = so.print_mc,`user_id` = so.user_id,`create_person_name` = so.create_person_name,
+               `create_person_id` = so.create_person_id,`source_from` = so.source_from,`updatetime` = now() ;
+							 
+							 
+	   -- --------------------J3开课教师占非科研为主型教师比例----------------------------------------
+		INSERT INTO `sams_factdata`.`yxkh_mx_course_teacher` (`id`,`id_fq`,`superiorfaculty`,`superiorfacultycode`,`course_superiorfaculty`,`course_superiorfacultyCode`,
+               `school_year`,`term`,`course_name`,`course_num`,`user_name`,`print_mc`,`user_id`,`major`,`create_person_name`,`create_person_id`,`source_from`,`updatetime`,`createtime`)  
+     select so.id,v_faqi_id,so.superiorfaculty,so.superiorfacultycode,so.course_superiorfaculty,so.course_superiorfacultyCode,
+            so.school_year,so.term,so.course_name,so.course_num,so.user_name,so.print_mc,so.user_id,so.major,so.create_person_name,
+            so.create_person_id,so.source_from,null,now()
+     from
+    (SELECT t.superiorfaculty,t.superiorfacultycode,p.kkyx AS course_superiorfacultyCode,b.c_name AS course_superiorfaculty,
+    p.xn AS school_year,p.xq AS term,p.kcmc AS course_name,1 AS course_num,p.xm AS user_name,t.print_mc,p.rscgh AS user_id,
+    t.major_level AS major,'sys' AS create_person_name, 'sys' AS create_person_id,'sams_data.pjpf_info' AS source_from,
+     NOW() AS createtime,concat_ws('-',IFNULL(p.kh,''),IFNULL(p.rscgh,'')) as id
+     FROM sams_data.pjpf_info p 
+     LEFT JOIN sams_data.teacher_info_all_adl t ON p.rscgh=t.userid
+     LEFT JOIN sams_factdata.`v_dm_bm` b ON b.C_ID = p.kkyx
+     WHERE ((p.xn = v_lastxn AND (p.xq =2 OR p.xq=3)) OR (p.xn= v_nowxn AND p.xq=1))
+           and p.tkdx='本科生'
+           ) as so 
+     on duplicate key update `id_fq` = v_faqi_id,`superiorfaculty` = so.superiorfaculty,`superiorfacultycode` = so.superiorfacultycode,
+               `course_superiorfaculty` = so.course_superiorfaculty,`course_superiorfacultyCode` = so.course_superiorfacultyCode,
+               `school_year` = so.school_year,`term` = so.term,`course_name` = so.course_name,`course_num`= so.course_num,
+               `user_name` = so.user_name,`print_mc` = so.print_mc,`user_id` = so.user_id,`major`=so.major,`create_person_name` = so.create_person_name,
+               `create_person_id` = so.create_person_id,`source_from` = so.source_from,`updatetime` = now() ;
+							 
+		 -- ------------------------------------J11 对全校开课教学班受益学生人次数------------------------------------
+		 INSERT INTO `sams_factdata`.`yxkh_mx_school_course_benefits`(`id`, `id_fq`, `superiorfaculty`, `superiorfacultycode`, `school_year`, `term`, `course_name`, `class_no`, `user_id`, `user_name`, `student_num`, `create_person_name`, `create_person_id`, `source_from`, `updatetime`, `createtime`) 
+		 select so.id,v_faqi_id,so.superiorfaculty,so.superiorfacultycode,so.school_year,so.term,so.course_name,so.class_no,
+					  so.user_id,so.user_name,so.student_num,so.create_person_name,so.create_person_id,so.source_from,null,now()
+		 FROM (
+		 select p.kkyx AS superiorfacultyCode,b.c_name AS superiorfaculty,p.xn AS school_year,p.xq AS term,p.kcmc AS course_name,
+	          p.bsid as class_no,p.rscgh AS user_id,p.xm AS user_name,p.tkrs as student_num,'sys' AS create_person_name, 'sys' AS create_person_id,
+	          'sams_data.pjpf_info' AS source_from,concat_ws('-',IFNULL(p.kh,''),IFNULL(p.rscgh,'')) as id 
+	      FROM sams_data.pjpf_info p
+		    LEFT JOIN sams_data.teacher_info_all_adl t ON p.rscgh=t.userid
+        LEFT JOIN sams_factdata.`v_dm_bm` b ON b.C_ID = p.kkyx
+		    where ((p.xn = v_lastxn AND (p.xq =2 OR p.xq=3)) OR (p.xn= v_nowxn AND p.xq=1)) and p.tkdx='本科生') as so
+				on duplicate key update `id_fq` = v_faqi_id,`superiorfaculty` = so.superiorfaculty,`superiorfacultycode` = so.superiorfacultycode,
+				         `school_year` = so.school_year,`term` = so.term,`course_name` = so.course_name,`class_no`= so.class_no,
+								 `user_id` = so.user_id,`user_name` = so.user_name,`student_num`=so.student_num,`create_person_name` = so.create_person_name,
+               `create_person_id` = so.create_person_id,`source_from` = so.source_from,`updatetime` = now() ;
+		
+END

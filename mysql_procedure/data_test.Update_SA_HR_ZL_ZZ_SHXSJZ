@@ -1,0 +1,132 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_SA_HR_ZL_ZZ_SHXSJZ`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+
+
+    #专利、软著
+
+    truncate data_test.SA_HR_ZL_NEWITEM;
+
+    insert into data_test.SA_HR_ZL_NEWITEM(id,gh, xm, zlmc, zlh, sqny, sqdw,zljsm,
+                                   zljsmc, pm, zllbm, zllbmc, gkrq, sfsq, sqrq,
+                                   nation, sqh, SchoolNo, AgencyNo, Agency,
+                                   inventor_finisher, bz, SABZ, current_status, createtime, updatetime)
+    select a.id,a.gh,a.xm,a.zlmc,a.zlh,a.sqny,a.sqdw,a.zljsm,c.mc,a.pm,a.zllbm,
+           d.mc,a.gkrq,a.sqzt,a.shouqrq,a.nation,
+           a.sqh,a.SchoolNo,a.AgencyNo,a.Agency,a.inventor_finisher,
+           a.bz,'SA交互',a.current_status,a.create_timestamp,a.update_timestamp
+    from sams_factdata.sr_patent a
+    inner join sams_factdata.jg_jbxx jg on a.gh=jg.GH
+    left join sams_factdata.DM_JS c ON c.dm=a.zljsm
+    left join sams_factdata.DM_ZLLB d ON d.dm = a.zllbm
+    where a.scbj='N' and a.qr=77
+       and substring(a.update_timestamp,1,10)=date_sub(current_date, interval 1 day)
+
+    union
+
+    select ast.id,ast.gh, ast.xm, asi.rjmc, asi.zsbh, asi.sqrq, asi.zzqr, ast.role,
+           c.mc,ast.xh,'7','软件著作', asi.sqrq, '是',asi.sqrq, asi.nation, asi.zsbh,
+           asi.xxbh,asi.swsbh,null,null,asi.bz,'SA交互',null,
+           ast.create_time,ast.update_time
+    from  sams_factdata.award_software_info asi
+    inner join sams_factdata.award_stuff ast on asi.id = ast.jlid
+    inner join sams_factdata.jg_jbxx jg on ast.gh=jg.GH
+    left join sams_factdata.DM_JS c ON c.dm=ast.role
+    where ast.status=77 and asi.scbj='N'
+       and substring(ast.update_time,1,10)=date_sub(current_date, interval 1 day)
+    ;
+
+
+    insert into data_test.SA_HR_ZL_BAK(id, gh, xm, zlmc, zlh, sqny, sqdw, zljsm, zljsmc,
+                                       pm, zllbm, zllbmc, gkrq, sfsq, sqrq, nation, sqh,
+                                       SchoolNo, AgencyNo, Agency, inventor_finisher, bz,
+                                       SABZ, createtime, updatetime, current_status, TBtime)
+    select id, gh, xm, zlmc, zlh, sqny, sqdw, zljsm, zljsmc,
+           pm, zllbm, zllbmc, gkrq, sfsq, sqrq, nation, sqh,
+           SchoolNo, AgencyNo, Agency, inventor_finisher, bz,
+           SABZ, createtime, updatetime, current_status, current_timestamp()
+    from data_test.SA_HR_ZL_NEWITEM;
+
+
+    #'专著','教学参考书','教材','编著','译著','作品','画册','其他'
+
+    truncate data_test.SA_HR_ZZ_NEWITEM;
+
+    insert into data_test.SA_HR_ZZ_NEWITEM(SAid, teacher_id, teacher_name, zzmc, zzlx, cbs,
+                                   cbrq, zxzs, cbsjb, cbd, isbn, yz, fywy, xxsm,
+                                   bz, teacher_work, used_schools, SAbz)
+    select a.id,a.userid,a.username,
+           b.zzmc monographName,
+            case when b.zzlx='专著' then '11'
+               when b.zzlx='教学参考书' or b.zzlx='教材' then '14'
+               when b.zzlx='编著' then '12'
+               when b.zzlx='作品' then '49'
+               when b.zzlx='译著' then '13'
+               when b.zzlx='画册' then '30'
+               else '99' end,
+           b.cbs pressName,b.cbrq publishDate,
+           a.word_number,b.cbsjb,b.cbd,
+           b.isbn,b.yz,b.fywy,b.xxsm,b.bz,
+           b.teacher_work,b.used_schools usedSchools,
+           'SA交互'
+    from sams_factdata.zzk_member a
+    inner join sams_factdata.zzk b on a.zzk_id = b.id
+    where a.status = 77 and b.scbj='N' and a.userid is not null
+        and (substring(a.updatedate,1,10)=date_sub(current_date, interval 1 day)
+        or substring(b.updatedate,1,10)=date_sub(current_date, interval 1 day))
+    ;
+
+    insert into data_test.SA_HR_ZZ_BAK(SAid, teacher_id, teacher_name, zzmc, zzlx, cbs, cbrq, zxzs, cbsjb,
+                                       cbd, isbn, yz, fywy, xxsm, bz, teacher_work, used_schools, SAbz)
+    select said, teacher_id, teacher_name, zzmc, zzlx, cbs, cbrq, zxzs,
+           cbsjb, cbd, isbn, yz, fywy, xxsm, bz, teacher_work,
+           used_schools, SAbz
+    from data_test.SA_HR_ZZ_NEWITEM;
+
+    ###社会/学术兼职
+
+    truncate data_test.SA_HR_SHXSJZ_NEWITEM;
+
+    insert into data_test.SA_HR_SHXSJZ_NEWITEM(organization, starttime, endtime, position,
+                                       gh, type, jzdwjb, jznr,
+                                       sfqc, region, SAbz, SAid)
+    select a.academic_org org,
+           REPLACE(a.start_time,'-','.'),
+           REPLACE(a.end_time,'-','.'),
+           a.academic_title title,
+           a.user_id userId,
+           b.dm,
+           a.jzdwjb,
+           a.jznr,
+           a.sfqc,
+           a.region,
+           'SA交互',
+           a.id
+    from sams_factdata.sr_academic_pt a
+    left join sams_factdata.dm_jzdwxz b
+    on a.org_type=b.mc
+    where a.scbj='N' and a.status=77
+      and (is_inserted_by_teacher!='R' or is_inserted_by_teacher is null)
+      and substring(a.updatetime,1,10)=date_sub(current_date, interval 1 day)
+    ;
+
+    insert into data_test.SA_HR_SHXSJZ_BAK(organization, starttime, endtime, position,
+                                           gh, type, jzdwjb, jznr, sfqc, region, SAbz, SAid)
+    select organization, starttime, endtime, position,
+           gh, type, jzdwjb, jznr, sfqc, region, SAbz, SAid
+    from data_test.SA_HR_SHXSJZ_NEWITEM;
+
+
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('40','Update_SA_HR_ZL_ZZ_SHXSJZ','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('40','Update_SA_HR_ZL_ZZ_SHXSJZ','0',now(),'执行成功');
+	END IF;
+END

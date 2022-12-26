@@ -1,0 +1,479 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_U_YXKH_Auto`()
+BEGIN
+	
+	-- -----------------------J1主讲本科课程的教授占院系该群体的比例-------------------------------------
+	
+	update  yxkh_resultdata AAA
+	set AAA.result_auto=null
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1983def-7b99-11e9-8fcb-da2d510f5786';
+
+	update  yxkh_resultdata AAA
+	left join (
+	select count(distinct A.gh) rs,D.PARENT1_C_ID from  jg_jbxx A
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	inner join zyzwk E on A.gh=E.gh and E.qr=2 and E.sfxr='是' and E.xh>0 and substring(E.przwm,1,3)='011'
+	where A.gh!='' and A.RYZTM=9
+	group by D.PARENT1_C_ID
+	) AA on AAA.sjbmcode=AA.PARENT1_C_ID
+	left join (
+	select count(distinct A.gh) rs,D.PARENT1_C_ID from  jg_jbxx A
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	inner join zyzwk E on A.gh=E.gh and E.qr=2 and E.sfxr='是' and E.xh>0 and substring(E.przwm,1,3)='011'
+	inner join sams_data.pjpf_info F on A.gh=F.rscgh and F.tkdx='本科生'
+	inner join yxkh_faqi B on (F.xn=concat(B.khyear,'-',B.khyear+1) and F.xq=1) or (F.xn=concat(khyear-1,'-',khyear) and F.xq in (2,3))
+	where A.gh!='' and A.RYZTM=9
+	group by D.PARENT1_C_ID
+	) BB on AAA.sjbmcode=BB.PARENT1_C_ID
+	set AAA.result_auto=CONCAT(ROUND(ifnull(BB.rs/AA.rs,0)*100,2),'','')
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1983def-7b99-11e9-8fcb-da2d510f5786';
+
+-- --------------------J2教授独自开设本科课程门数占院系本科课程总门数的比例-----------------------
+
+	select jg as result,jg as result_AUTO ,id_faqi,id_target,tbbmcode from  yxkh_resultdata AAA
+	inner join
+	(select CONCAT(ROUND(ifnull(BB.rs/AA.rs,0)*100,2),'','')  jg,AA.PARENT1_C_ID from (
+	select count(distinct A.bsid) rs,D.PARENT1_C_ID from JX_JSDRK A
+	inner join JX_DRZK C on A.BSID=C.bsid
+	inner join yxkh_faqi B on (A.xn=concat(B.khyear,'-',B.khyear+1) and A.xq=1) or (A.xn=concat(khyear-1,'-',khyear) and A.xq in (2,3))
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	where A.PKBZ='是'
+	group by PARENT1_C_ID) AA
+	left join
+	(select count(distinct bsid) rs,D.PARENT1_C_ID from  JX_JSDRK A
+	inner join JX_JSJBK B on A.gh=B.gh
+	inner join jg_jbxx C on B.rscgh=C.GH
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	inner join zyzwk E on C.gh=E.gh and E.qr=2 and E.sfxr='是' and E.xh>0 and substring(E.przwm,3,1)=1
+	where bsid in (
+	select A.bsid from JX_JSDRK A
+	inner join JX_DRZK C on A.BSID=C.bsid
+	inner join yxkh_faqi B on (A.xn=concat(B.khyear,'-',B.khyear+1) and A.xq=1) or (A.xn=concat(khyear-1,'-',khyear) and A.xq in (2,3))
+	group by A.BSID having count(*)=1)
+	group by PARENT1_C_ID
+	) BB on AA.PARENT1_C_ID=BB.PARENT1_C_ID) BBB on AAA.sjbmcode=BBB.PARENT1_C_ID
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1a0efa4-7b99-11e9-8fcb-da2d510f5786'  ;
+
+	update yxkh_resultdata AAA 
+	left join (select CONCAT(ROUND(ifnull(BB.rs/AA.rs,0)*100,2),'','')  jg,AA.PARENT1_C_ID from (
+	select count(distinct A.bsid) rs,D.PARENT1_C_ID from JX_JSDRK A
+	inner join JX_DRZK C on A.BSID=C.bsid
+	inner join yxkh_faqi B on (A.xn=concat(B.khyear,'-',B.khyear+1) and A.xq=1) or (A.xn=concat(khyear-1,'-',khyear) and A.xq in (2,3))
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	where A.PKBZ='是'
+	group by PARENT1_C_ID) AA
+	left join
+	(select count(distinct bsid) rs,D.PARENT1_C_ID from  JX_JSDRK A
+	inner join JX_JSJBK B on A.gh=B.gh
+	inner join jg_jbxx C on B.rscgh=C.GH
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	inner join zyzwk E on C.gh=E.gh and E.qr=2 and E.sfxr='是' and E.xh>0 and substring(E.przwm,3,1)=1
+	where bsid in (
+	select A.bsid from JX_JSDRK A
+	inner join JX_DRZK C on A.BSID=C.bsid
+	inner join yxkh_faqi B on (A.xn=concat(B.khyear,'-',B.khyear+1) and A.xq=1) or (A.xn=concat(khyear-1,'-',khyear) and A.xq in (2,3))
+	group by A.BSID having count(*)=1)
+	group by PARENT1_C_ID
+	) BB on AA.PARENT1_C_ID=BB.PARENT1_C_ID) BBB on AAA.sjbmcode=BBB.PARENT1_C_ID
+	set AAA.result_auto=BBB.jg
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1a0efa4-7b99-11e9-8fcb-da2d510f5786'  ;
+
+-- --------------------J3开课教师占非科研为主型教师比例----------------------------------------
+	update yxkh_resultdata set result_auto=(select BBB.jg from
+	(select  CONCAT(ROUND(ifnull(BB.rs/AA.rs,0)*100,2),'','')    jg,AA.PARENT1_C_ID from (
+	select count(distinct A.gh) rs,D.PARENT1_C_ID from  jg_jbxx A
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	where (gwm not in ('12','160','17')or gwm is null)   and RYZTM=9
+	group by D.PARENT1_C_ID
+	) AA
+	left join
+	(
+		select count(distinct A.gh) rs,D.PARENT1_C_ID from  jg_jbxx A
+	inner join v_dm_bm D on A.YXDM=D.C_ID
+	inner join sams_data.pjpf_info F on A.gh=F.rscgh  and F.tkdx='本科生'
+	inner join yxkh_faqi B on (F.xn=concat(B.khyear,'-',B.khyear+1) and F.xq=1) or (F.xn=concat(khyear-1,'-',khyear) and F.xq in (2,3))
+	where A.gh!=''
+	group by D.PARENT1_C_ID
+	) BB on AA.PARENT1_C_ID=BB.PARENT1_C_ID) BBB where yxkh_resultdata.sjbmcode=BBB.PARENT1_C_ID )
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1a81552-7b99-11e9-8fcb-da2d510f5786';
+
+-- ---------------------------------J15开设通识课程的受益学生人次数-------------------------------------
+	update yxkh_resultdata set result_auto =(select BBB.jg from 
+	(select A.yxdm PARENT1_C_ID,sum(QDRS) jg from sams_factdata.JX_JSDRK A 
+	inner join yxkh_faqi B on (A.xn=concat(B.khyear,'-',B.khyear+1) and A.xq=1) or (A.xn=concat(khyear-1,'-',khyear) and A.xq in (2,3))
+	where A.KCXZ='06' and A.PKBZ='是'
+	group by A.yxdm) BBB where yxkh_resultdata.sjbmcode=BBB.PARENT1_C_ID )
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d1e79985-7b99-11e9-8fcb-da2d510f5786';
+
+
+-- ---------------------------------J41直博生、硕博连读生在当年度招收的博士生的比例-------------------------------------
+	update yxkh_resultdata set result_auto =(select BBB.jg from 
+	(select CONCAT(ROUND(ifnull(BB.rs/AA.rs,0)*100,2),'','')  jg,AA.PARENT1_C_ID from (
+	select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019' and XSLBDM like '3%'
+	group by D.PARENT1_C_ID) AA
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019' and XSLBDM like '3%' and B.RXFSDM in ('24','23') 
+	group by D.PARENT1_C_ID
+	) BB on AA.PARENT1_C_ID=BB.PARENT1_C_ID) BBB where yxkh_resultdata.sjbmcode=BBB.PARENT1_C_ID )
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d25a70eb-7b99-11e9-8fcb-da2d510f5786';
+
+-- ---------------------------------J42当年度招收的学术硕士生与专业硕士生之比与上一年的比较（或当年度招收的学术硕士生与学术博士生之比与上一年的比较）------------
+	update  yxkh_resultdata AA
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019'  and A.XSLBM in ('11','95') 
+	group by D.PARENT1_C_ID) A1 on AA.sjbmcode=A1.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019'  and A.XSLBM in ('13','93') 
+	group by D.PARENT1_C_ID) A2 on AA.sjbmcode=A2.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2017'  and A.XSLBM in ('11','95') 
+	group by D.PARENT1_C_ID) A3 on AA.sjbmcode=A3.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2017'  and A.XSLBM in ('13','93') 
+	group by D.PARENT1_C_ID) A4 on AA.sjbmcode=A4.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019'  and A.XSLBM in ('11','95') 
+	group by D.PARENT1_C_ID) B1 on AA.sjbmcode=B1.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2019'  and A.XSLBM in ('01','96') 
+	group by D.PARENT1_C_ID) B2 on AA.sjbmcode=B2.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2017'  and A.XSLBM in ('11','95') 
+	group by D.PARENT1_C_ID) B3 on AA.sjbmcode=B3.PARENT1_C_ID
+	left join 
+	(select count(A.XH) rs ,D.PARENT1_C_ID
+	from XS_XSJBK A
+	left join XS_KSLQ B on A.xh=B.xh
+	inner join v_dm_bm D on A.YXSH=D.C_ID
+	where A.sjly='60300' and substring(rxnj,1,4)='2017'  and A.XSLBM in ('01','96') 
+	group by D.PARENT1_C_ID) B4 on AA.sjbmcode=B4.PARENT1_C_ID
+	set result_auto=concat(CONCAT(ROUND(ifnull((A1.rs/A2.rs)/(A3.rs/A4.rs),0)*100,2),'','%') ,',',CONCAT(ROUND(ifnull((B1.rs/B2.rs)/(B3.rs/B4.rs),0)*100,2),'','%'))
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d25d8932-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- -------------------------K8国家杰出青年科学基金项目数 
+-- Z10304	国家杰出青年科学基金	自然科学基金委
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB='Z10304' and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+	set result_auto=BB.rs
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d38e0d4a-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- -------------------------K9国家优秀青年科学基金项目数/军事青年托举人才项目数
+-- Z10317	优秀青年基金	自然科学基金委
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB='Z10317' and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+	set result_auto=BB.rs
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d394aa3d-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- ------------------------K10国家重点研发计划项目立项数
+-- Z10114	重点研发计划	科技部
+-- Z10306	重大研究计划	自然科学基金委	?
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB in('Z10114') and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+	set result_auto=BB.rs
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d396e6e2-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- ------------------------K11国家自然基金重大（牵头）/重点项目立项数（牵头）
+-- Z10303	重大项目	自然科学基金委
+-- Z10319	国家重大科研仪器设备研制专项	自然科学基金委
+-- Z10320	国家重大科研仪器研制项目	自然科学基金委
+-- Z10302	重点项目	自然科学基金委
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB in ('Z10303','Z10319','Z10320')and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB in ('Z10302')and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB2 on AA.sjbmcode=BB2.PARENT1_C_ID
+	set result_auto=concat(ifnull( BB1.rs,'0') ,' / ', ifnull(BB2.rs,'0')  ) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d39ca071-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- ------------------------K13重大专项立项合同数与金额/到账金额
+-- Z10105	重大专项	科技部
+-- Z10109	重大科学仪器设备开发专项	科技部
+-- Z10113	重大专项子课题	科技部
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,sum(A.HTJF) ht,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB in ('Z10105','Z10109','Z10113')and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' #and A.SHZT=2
+	group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	left join 
+	(select sum(C.DKJE) rs,D.PARENT1_C_ID from t_xm_jbxx A
+	inner join t_ky_xmzkt B on A.WID=B.XM_WID  
+	inner join t_jf_zktdkqk C on B.wid=C.ZKT_WID  
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.XMEJLB in ('Z10105','Z10109','Z10113')and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2
+	group by D.PARENT1_C_ID) BB2 on AA.sjbmcode=BB2.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0'),' / ',ifnull( BB1.ht,'0') ,' / ', ifnull(BB2.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3a2a80a-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- ------------------------K14累计到款≥1000万元横向项目数
+/*
+update  yxkh_resultdata AA
+left join 
+(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+where A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2 and A.xmfl=3 and A.wid in 
+(select xm_wid from t_jf_zktdkqk 
+group by XM_wid having sum(dkje)>'1000')
+group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+set result_auto=concat(ifnull(BB1.rs,'0')) 
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3a54bc4-7b99-11e9-8fcb-da2d510f5786' ;
+*/
+-- 改进方法
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from sams_factdata.T_KY_ALLOCATE A
+	inner join v_dm_bm D on concat(A.SA_DEPART,'00')=D.C_ID
+	where prj_code in(
+	select prj_code from sams_factdata.T_KY_ALLOCATE cw where syear='2019' and upper(PRJ_CODE) not like '%TEST%' and pcode2 like '__02__'  group by prj_code having sum(inamt)>='10000000') 
+	group by D.PARENT1_C_ID
+	) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3a54bc4-7b99-11e9-8fcb-da2d510f5786' ;
+-- ------------------------K15累计到款（500万（含）-1000万元）横向项目数
+
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from t_xm_jbxx A 
+	inner join v_dm_bm D on A.XMSSXY=D.C_ID
+	where A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' and A.SHZT=2 and A.xmfl=3 and A.wid in 
+	(select xm_wid from t_jf_zktdkqk 
+	group by XM_wid having sum(dkje)>='500' and sum(dkje)<'1000')
+	group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3a816d0-7b99-11e9-8fcb-da2d510f5786' ;
+	-- 改进方法
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from sams_factdata.T_KY_ALLOCATE A
+	inner join v_dm_bm D on concat(A.SA_DEPART,'00')=D.C_ID
+	where prj_code in(
+	select prj_code from sams_factdata.T_KY_ALLOCATE cw where syear='2019' and upper(PRJ_CODE) not like '%TEST%' and pcode2 like '__02__'  group by prj_code having sum(inamt)>='5000000' and sum(inamt)<'10000000') 
+	group by D.PARENT1_C_ID
+	) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3a816d0-7b99-11e9-8fcb-da2d510f5786' ;
+-- ------------------------K16四大名刊论文数
+/*
+update  yxkh_resultdata AA
+left join 
+(select count(*) rs,D.PARENT1_C_ID from sams_factdata.lzk A
+inner join jg_jbxx B on A.gh=B.gh 
+inner join sams_factdata.DM_KeyJournals C on A.cbsorqkmc = C.JournalsName and C.KeyType in ('nature','science','cell','pnas')
+inner join v_dm_bm D on B.yxdm=D.C_ID
+where A.scbj='N' and B.SCBJ='N' and B.RYZTM='9' and SUBSTR(A.fbny,1,4)='2018'
+group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+set result_auto=concat(ifnull(BB1.rs,'0')) 
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3ab399a-7b99-11e9-8fcb-da2d510f5786' ;
+*/
+-- ------------------------K19SCIE论文总数
+-- 12	SCIE
+-- 16	SCI引文
+-- 202	SCIE
+/*
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from sams_factdata.lzk A
+	inner join jg_jbxx B on A.gh=B.gh 
+	inner join v_dm_bm D on B.yxdm=D.C_ID
+	where A.scbj='N' and B.SCBJ='N' and B.RYZTM='9' and SUBSTR(A.fbny,1,4)='2018' and (A.SCIE='1' or A.lwfbflm like '%12%' or A.lwfbflm like '%16%' or A.lwfbflm like '%202%')
+	group by D.PARENT1_C_ID
+	) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3d20022-7b99-11e9-8fcb-da2d510f5786' ;
+*/
+-- K26	海外专利申请数/授权数/PCT申请数/授权数
+/*
+	select * from yxkh_target where id_fq='befb2177-7b95-11e9-8fcb-da2d510f5786' and zb_code='K26' ;
+
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from sams_factdata.sr_patent A
+	inner join jg_jbxx B on A.gh=B.gh 
+	inner join v_dm_bm D on B.yxdm=D.C_ID
+	where A.scbj='N' and A.shouqrq like '2019%'
+	group by D.PARENT1_C_ID
+	) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3f14698-7b99-11e9-8fcb-da2d510f5786' ;
+*/
+-- K27	国内发明专利申请数/授权数
+/*
+	select * from yxkh_target where id_fq='befb2177-7b95-11e9-8fcb-da2d510f5786' and zb_code='K27' ;
+	 
+	update  yxkh_resultdata AA
+	left join 
+	(select count(*) rs,D.PARENT1_C_ID from sams_factdata.sr_patent A
+	inner join jg_jbxx B on A.gh=B.gh 
+	inner join v_dm_bm D on B.yxdm=D.C_ID
+	where A.scbj='N' and A.shouqrq like '2019%'
+	group by D.PARENT1_C_ID
+	) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+	set result_auto=concat(ifnull(BB1.rs,'0')) 
+	where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d3f3d6ca-7b99-11e9-8fcb-da2d510f5786' ;
+*/
+
+-- K45	国家级社科立项数（不含重大）
+update  yxkh_resultdata AA
+left join (
+select count(*) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+where A.xmdl='2' and A.XMJB in ('100','2100') and A.shzt=2 and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' 
+and A.XMEJLB not in ('Z200101','Z200701','Z200801','Z201905290','Z203001')
+group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+set result_auto=BB.rs
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d4407f74-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- K46	省部级社科立项数（不含重大）
+
+update  yxkh_resultdata AA
+left join (
+select count(*) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+where A.xmdl='2' and A.XMJB in ('2200') and A.shzt=2 and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' 
+and A.XMEJLB not in ('Z200101','Z200701','Z200801','Z201905290','Z203001')
+group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+set result_auto=BB.rs
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d442fbd5-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- K47	省部级及以上社科重大项目立项数
+
+-- Z2001	国家社会科学基金项目
+-- Z2007	教育部人文社会科学研究项目
+-- Z2008	教育部人文社科研究专项任务项目
+-- Z20190529	教育部项目（外校转入）
+-- Z2030	老国家社科基金项目（2016年之前）
+-- 中二级类别是重大的
+
+update  yxkh_resultdata AA
+left join (
+select count(*) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+where A.xmdl='2' and A.XMJB in ('2200','100','2100') and A.shzt=2 and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' 
+and A.XMEJLB in ('Z200101','Z200701','Z200801','Z201905290','Z203001')
+group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+set result_auto=BB.rs
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d44508cb-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- K48	文科百万级项目数
+
+update  yxkh_resultdata AA
+left join (
+select count(*) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+where A.xmdl='2' and A.shzt=2 and A.KSRQ>='2019-01-01' and A.KSRQ<='2019-12-31' 
+and A.HTJF>100
+group by D.PARENT1_C_ID) BB on AA.sjbmcode=BB.PARENT1_C_ID
+set result_auto=BB.rs
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d4470c7c-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- K49	文科到帐经费/纵向到账经费/横向到账经费
+
+update  yxkh_resultdata AA
+left join 
+(select sum(C.inamt/10000) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+left join T_KY_ALLOCATE C on A.xmbh=C.ky_prj_code
+where A.xmdl='2' and A.shzt=2 and C.syear='2019'
+group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+left join 
+(select sum(C.inamt/10000) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+left join T_KY_ALLOCATE C on A.xmbh=C.ky_prj_code
+where A.xmdl='2' and A.shzt=2 and C.syear='2019' and A.XMFL='1'
+group by D.PARENT1_C_ID) BB2 on AA.sjbmcode=BB2.PARENT1_C_ID
+left join 
+(select sum(C.inamt/10000) rs,D.PARENT1_C_ID  from t_xm_jbxx A 
+inner join v_dm_bm D on A.XMSSXY=D.C_ID
+left join T_KY_ALLOCATE C on A.xmbh=C.ky_prj_code
+where A.xmdl='2' and A.shzt=2 and C.syear='2019' and A.XMFL='3'
+group by D.PARENT1_C_ID) BB3 on AA.sjbmcode=BB3.PARENT1_C_ID
+set result_auto=concat(ifnull(TRUNCATE(BB1.rs,2),''),' / ',ifnull( TRUNCATE(BB2.rs,2),'') ,' / ', ifnull(TRUNCATE(BB3.rs,2),'')) 
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d4492cf8-7b99-11e9-8fcb-da2d510f5786' ;
+
+-- R9	考核基本合格和不合格人数及其比例 
+
+update  yxkh_resultdata AA
+left join 
+(select count(*) rs,D.PARENT1_C_ID from sams.hr_assessment A
+inner join v_dm_bm D on A.unit=D.C_ID
+where type='1' and A.result in ('基本合格','不合格') and assessmentyear='2018' 
+group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+left join 
+(select count(*) rs,D.PARENT1_C_ID from sams.hr_assessment A
+inner join v_dm_bm D on A.unit=D.C_ID
+where type='1'  and assessmentyear='2018' 
+group by D.PARENT1_C_ID) BB2 on AA.sjbmcode=BB2.PARENT1_C_ID 
+set AA.result_auto=concat(ifnull(BB1.rs,'0'),',', CONCAT(ROUND(ifnull(BB1.rs,'0')/ ifnull(BB2.rs,'0')*100,2),'',''))
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d4a52753-7b99-11e9-8fcb-da2d510f5786' ;
+
+
+-- G8	外籍教师占比（六个月以上）
+
+update  yxkh_resultdata AA
+left join 
+(select count(*) rs,D.PARENT1_C_ID from sams_factdata.jg_jbxx A
+inner join v_dm_bm D on A.YXDM=D.C_ID
+where RYZTM='9' and jzglbm='111' and gwm in ('151','152','153','11','140','16','13') and gjm!='CN '
+group by D.PARENT1_C_ID) BB1 on AA.sjbmcode=BB1.PARENT1_C_ID
+left join 
+(select count(*) rs,D.PARENT1_C_ID from sams_factdata.jg_jbxx A
+inner join v_dm_bm D on A.YXDM=D.C_ID
+where RYZTM='9' and jzglbm='111' and gwm in ('151','152','153','11','140','16','13') 
+group by D.PARENT1_C_ID) BB2 on AA.sjbmcode=BB2.PARENT1_C_ID 
+set AA.result_auto=concat(ROUND(ifnull(BB1.rs,'0')/ifnull(BB2.rs,'0')*100,2),'','')
+where id_faqi='befb2177-7b95-11e9-8fcb-da2d510f5786' and id_target='d4d7730b-7b99-11e9-8fcb-da2d510f5786' ;
+
+END

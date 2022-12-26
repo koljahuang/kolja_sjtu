@@ -1,0 +1,61 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_load_jsks_info`(IN `v_year` varchar(20),IN `v_xn` varchar(20),IN `v_xq` varchar(20))
+BEGIN
+
+-- 教师课时数据统计
+		delete from sams_data.jsks_info where xn=v_xn and xq=v_xq;
+		-- truncate sams_data.jsks_info;
+		insert into sams_data.jsks_info(uuid,gh,name,faculty,facultycode,superiorfaculty,superiorfacultycode,xn,xq,tkdx,tkrs,gender,print_mc
+,bzmc,age,typeName,TalentTypeAbbr,levelsName,xqxss,totalxss,ktxs,syxs,qtxs,pjf,isvalid,kcdm,kcmc,kh,bj,pm,updateDate,bsid)
+		select uuid(),a.rscgh,a.xm,b.faculty,b.facultycode,b.superiorfaculty,b.superiorfacultycode,
+		a.xn,a.xq,a.tkdx,a.tkrs,b.gender,b.print_mc,b.bzmc,b.birth,
+		b.TypeName,b.TalentTypeAbbr,b.levelsName,a.xqxss,a.totalxss,a.ktxs,a.syxs,a.qtxs,a.pkf,a.isvalid,a.kcdm,a.kcmc,
+		a.kh,a.bj,row_number() over (partition by b.superiorfacultycode,a.xn,a.xq order by a.pkf desc) as pm,curdate(),bsid
+		from sams_data.pjpf_info as a
+		left join
+		(
+		select a.userid,a.faculty,a.facultycode,a.superiorfaculty,a.superiorfacultycode,
+		a.gender,a.print_mc,a.bzmc,a.birth,c.TypeName,c.TalentTypeAbbr,c.levelsName
+		from
+		(select  userid,faculty,facultycode,superiorfaculty,superiorfacultycode,
+		gender,print_mc,bzmc,v_year-cast(substring(birthdate,1,4) as int) as birth
+		from sams.hr_basic as a
+		left join
+		(
+		select a.gh as gh,a.przwm,b.print_mc as print_mc
+		from
+		(
+		select gh,przwm,max(xh)
+		from sams_factdata.zyzwk
+		where gh is not null and xh>0 and qr=2 and sfxr='是'
+		group by gh
+		) a  -- 获取聘任职位码
+		left join sams_factdata.dm_gb8561 as b
+		on a.przwm = b.dm
+		) b
+		on a.userid = b.gh
+		left join
+		(
+		select a.*,b.mc as bzmc from sams_factdata.jg_jbxx a
+		left join sams_factdata.dm_bzlb_gw b
+		on a.BZM = b.dm
+		) c  -- 编制类别码
+		on a.userid = c.GH
+		where a.usertype = 'C' and a.scbj='N'
+		) a
+		left join
+		(
+		select a.GH,a.TypeName,a.OrganName,a.TalentTypeAbbr,b.levelsName
+		from
+		(select GH, TypeName, OrganName, TalentTypeAbbr
+		from sams.RCJHK
+		) a
+		left join
+		( select TalentTypeAbbr,levelsName from sams_factdata.esTalentType
+		) b
+		on  a.TalentTypeAbbr = b.TalentTypeAbbr
+		limit 1
+		) c
+		on a.userid = c.GH
+		) b
+		on trim(a.rscgh) = b.userid where length(a.rscgh)!=0  and a.xn=v_xq and a.xq=v_xq;
+END

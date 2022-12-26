@@ -1,0 +1,122 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `xkpg_teacher_hz`(IN major_level1_no1 varchar(255))
+    COMMENT '学科评估-教师汇总表刷新'
+BEGIN
+   # #删除对应学科教师汇总数据
+   # DELETE FROM xkpg_teacher_info WHERE major_level1_no IN (major_level1_no1);
+   # # 刷新对应学科教师汇总数据
+   # INSERT INTO xkpg_teacher_info
+   # SELECT  UUID(),superiorfacultycode,superiorfaculty,a.major_level1_No,a.major_level1,
+   # zyjszw,COUNT(CASE WHEN zrjs=1 THEN gh END) AS zrjs_num,
+   # COUNT(CASE WHEN agele35=1 THEN gh END) AS agele35_num,
+   # COUNT(CASE WHEN agem35=1 THEN gh END) AS agem35_num,
+   # COUNT(CASE WHEN agem45=1 THEN gh END) AS agem45_num,
+   # COUNT(CASE WHEN agem55=1 THEN gh END) AS agem55_num,
+   # COUNT(CASE WHEN agem60=1 THEN gh END) AS agem60_num,
+   # COUNT(CASE WHEN doctor=1 THEN gh END) AS doctor_num,
+   #  COUNT(CASE WHEN lxhg=1 THEN gh END) AS lxhg_num,
+   #  COUNT(CASE WHEN wj=1 THEN gh END) AS wj_num,
+   #  COUNT(CASE WHEN woman=1 THEN gh END) AS woman_num,
+   #  COUNT(CASE WHEN bd=1 THEN gh END) AS bd_num,
+   #  COUNT(CASE WHEN sd=1 THEN gh END) AS sd_num,round_id,ml_id
+   # FROM sams_data.xkpg_teacher_info_mx AS a
+   # WHERE a.major_level1_no IN (major_level1_no1) and a.zrjs=1 and a.ryztm=9 GROUP BY superiorfacultycode,superiorfaculty,a.major_level1_No,a.major_level1,zyjszw;
+
+	truncate  sams_factdata.xkpg_teacher_info;
+	insert into sams_factdata.xkpg_teacher_info
+	(id, round_id, major_level1_no, major_level1,
+	 create_code, create_name,
+	 jszw, zrjs_num, agele35_num, agele45_num,
+	 agele55_num, agele60_num, agegt60_num, doctor_num, jwjl_num, bd_num,
+	 sd_num)
+	select  uuid(),round_id,major_level1_No,major_level1,
+	       '24010',
+	       '陈新冉',
+	        (case zyjszw
+                when '正高' then '正高'
+                when '副高' then '副高'
+	            else '其他'
+	            end
+            ),
+	       count(case when zrjs=1 then gh end) as zrjs_num,
+	       count(case when agele35=1 then gh end) as agele35_num,
+	       count(case when agem35=1 then gh end) as agele45_num,
+	       count(case when agem45=1 then gh end) as agele55_num,
+	       count(case when agem55=1 then gh end) as agele60_num,
+	       count(case when agem60=1 then gh end) as agegt60_num,
+	       count(case when doctor=1 then gh end) as doctor_num,
+	       count(case when lxhg=1 then gh end) as lxhg_num,
+	       count(case when bd=1 then gh end) as bd_num,
+	       count(case when sd=1 then gh end) as sd_num
+	from sams_data.xkpg_teacher_info_mx
+	where zrjs=1 and ryztm='9' and round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' 
+	  and (major_level1_no is not null and major_level1_no<>'')
+	group by superiorfaculty,superiorfacultycode,major_level1_No,major_level1,
+	(case zyjszw
+        when '正高' then '正高'
+        when '副高' then '副高'
+	    else '其他'
+	    end
+    );
+
+		
+		-- 根据借调后的教师刷新学缘结构
+	truncate sams_data.xkpg_teacher_info_xyjg;
+    insert into sams_data.xkpg_teacher_info_xyjg (`uuid`,   `major_level1_no`, `major_level1`, `schoolname`, `schoolnum`, `totalnum`, `pm`, `round_id`, `ml_id`)
+    select uuid(), a.major_level1_No as major_level1_no,a.major_level1,b.schoolname,b.school_gh_num,a.totalnum,b.ran,a.round_id,a.ml_id
+    from
+    (select
+    ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No) as major_level1_No,ifnull(ryjd.jd_major_level1,ryjd.major_level1) as major_level1,ryjd.round_id,f.ml_id,count(distinct a.gh) as totalnum
+    from sams_data.xkpg_teacher_info_mx as a
+    left join sams_factdata.xkpg_teacher_ryjd as ryjd on a.gh=ryjd.gh
+    left join sams_factdata.xkpg_major_detail as c on ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No)=c.major_level1_No and ryjd.round_id=c.round_id
+    left join
+    (
+    select a.id,a.pgmc,b.ml_id as ml_id,b.ml_details,starttime,endtime
+    from sams_factdata.xkpg_lc as a
+    left join sams_factdata.xkpg_ml as b on a.ID=b.ID_round
+    where a.state=1
+    ) as f on c.xkml_index_custom=f.ml_id and ryjd.round_id=f.id
+    where a.zrjs=1 and a.ryztm='9' and a.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd'
+    and (a.major_level1_no is not null and a.major_level1_no<>'')
+    group by
+    ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No),ifnull(ryjd.jd_major_level1,ryjd.major_level1),ryjd.round_id,f.ml_id
+    ) a
+    join
+    (select major_level1_No,major_level1,schoolname,school_gh_num,
+    row_number() over (partition by major_level1_No,major_level1
+    order by school_gh_num desc) as ran
+    from
+    (select
+    ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No) as major_level1_No,ifnull(ryjd.jd_major_level1,ryjd.major_level1) as major_level1,ryjd.round_id,f.ml_id,
+    e.schoolname as schoolname,
+    count(distinct a.gh) as school_gh_num
+    from sams_data.xkpg_teacher_info_mx as a
+    left join sams_factdata.xkpg_teacher_ryjd as ryjd on a.gh=ryjd.gh
+    left join sams_factdata.xkpg_major_detail as c on ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No)=c.major_level1_No and ryjd.round_id=c.round_id
+    left join
+    (
+    select a.id,a.pgmc,b.ml_id as ml_id,b.ml_details,starttime,endtime
+    from sams_factdata.xkpg_lc as a
+    left join sams_factdata.xkpg_ml as b on a.ID=b.ID_round
+    where a.state=1
+    ) as f on c.xkml_index_custom=f.ml_id and ryjd.round_id=f.id
+    left join
+    (
+    select a.userid, a.academiccode  academiccode, a.academicdeg,
+    a.graduationym, trim(a.schoolname) as schoolname, b.mc,row_number() over (partition by userid order by academiccode asc, graduationym desc) as ran
+    from sams.hr_academicdeg a
+    left join sams_factdata.DM_GB2659 b  on a.schooltype=b.dm
+    where a.academiccode>'0'
+    ) e on a.gh = e.userid and e.ran=1
+    where  a.zrjs=1
+    group by
+    ifnull(ryjd.jd_major_level1_No,ryjd.major_level1_No),ifnull(ryjd.jd_major_level1,ryjd.major_level1),ryjd.round_id,f.ml_id,e.schoolname
+    order by school_gh_num desc
+    ) b ) b
+    on  a.major_level1_No=b.major_level1_No where b.ran<11;
+
+    update  sams_data.xkpg_teacher_info_xyjg A
+    inner join sams_factdata.xkpg_faculty  B on A.major_level1_No=B.majortypeno
+    set A.superiorfaculty=B.superiorfaculty,A.superiorfacultycode=B.superiorfacultycode;
+
+END

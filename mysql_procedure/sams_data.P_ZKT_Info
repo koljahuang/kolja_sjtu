@@ -1,0 +1,498 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_ZKT_Info`(IN `v_year` varchar(20))
+BEGIN
+  #Routine body goes here...
+	
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+			-- 子课题项目到款,按年更新
+
+			update sams_factdata.t_ky_xmzkt set ZKTHTJE='150'  where jfkkh='BC0300007' ;
+ 
+			update sams_factdata.t_ky_xmzkt a
+			set xmfzrgh=(select hr_userid from sams_data.xm_kyvshr as b where b.ky_userid=a.XMFZRGH)
+			where xmfzrgh in (select ky_userid from sams_data.xm_kyvshr);  -- 博士后转教师工号更新
+			
+
+			delete from sams_data.zkt_cwhz where syear=v_year;
+			insert into sams_data.zkt_cwhz(uuid,gh,fzr_name,superiorfacultycode,facultycode,jfkkh,dkje,mkje,kgje,xgje,ygje,zxjx,rzsj,xmfl,xmbh,xmmc,ksrq,jsrq,htjf,lkdw,prj_name,pcode,pname,pcode2,pnam2,xmjb,xmlb,pzh,superiorfaculty,syear,xmxz,faculty,cyfs,xmejlb,xmdl,ptjf,xmly_tj)
+			select uuid(),
+			(select hr.userid from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C'),
+			ky.charge_name,ifnull(bm.PARENT1_C_ID,concat(ky.SA_DEPART,'00')) as superiorfacultycode,
+			(select hr.facultycode from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C' and ifnull(bm.PARENT1_C_ID,concat(ky.SA_DEPART,'00'))=hr.superiorfacultycode) as facultycode,
+			ky.PRJ_CODE,convert(ifnull(ky.inamt,0)/10000,decimal(20,6)),
+			convert(ifnull(ky.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(ifnull(ky.inamt,0)/10000,decimal(20,6))-convert(ifnull(ky.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(ifnull(ky.amt1,0)/10000,decimal(20,6)),convert(ifnull(ky.amt2,0)/10000,decimal(20,6)),
+			convert(ifnull(ky.amt3,0)/10000,decimal(20,6)),ky.sdate,ifnull(ky.xmlb,prjtype.kyjtype),ky.ky_prj_code,
+			if(zkt.ZKTMC is null,ky.ky_prj_code,zkt.ZKTMC),
+			ifnull(ky.ksrq,if(ifnull(zkt.KSRQ,xm.KSRQ) is null,substring((select min(b.sdate) from sams_factdata.V_KY_ALLOCATE as b
+			where b.SA_DEPART=ky.SA_DEPART and b.charge_sno=ky.charge_sno and b.PRJ_CODE=ky.PRJ_CODE and b.ky_prj_code=ky.ky_prj_code),1,10),ifnull(zkt.KSRQ,ky.ksrq)))
+			,ifnull(ky.jsrq,ifnull(zkt.JSRQ,ky.jsrq)),convert(ifnull(ky.htje,zkt.ZKTHTJE),decimal(20,6)),xm.WTDW  as lkdw,
+			ky.PRJ_NAME,ky.pcode,ky.pname,ky.pcode2,ky.pnam2,
+			(select mc from sams_factdata.t_dm_xm_xmjb where dm = xm.XMJB and SFQY=1) as XMJB, -- 项目级别
+			(select mc from sams_factdata.t_dm_xm_xmlb where dm = xm.XMLB and SFQY=1) as xmlb_mc, -- 项目类别
+			xm.PZH,ifnull(bm.C_NAME,'上海交通大学'),ky.syear,xm.xmxz,
+			(select hr.faculty from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C' and ifnull(bm.PARENT1_C_ID,concat(ky.SA_DEPART,'00'))=hr.superiorfacultycode) as faculty,
+			(select mc from sams_factdata.t_dm_xm_xmxz where xm.xmxz=DM),
+			(select mc from sams_factdata.t_dm_xm_xmlb where sfqy=1 and ls is not null and dm = xm.XMEJLB),xm.xmdl,xm.ptjf,
+			(select mc from sams_factdata.t_dm_xm_xmlytj where DM=xm.XMLY_TJ) as xmly_tj
+			from sams_factdata.V_KY_ALLOCATE as ky
+			left join sams_factdata.t_ky_xmzkt as zkt on ky.ky_prj_code = zkt.XMBH and ky.charge_sno=zkt.ky_XMFZRGH and ky.charge_name=zkt.XMFZRXM and ky.PRJ_CODE = zkt.JFKKH
+			left join sams_factdata.t_xm_jbxx as xm on zkt.XM_WID = xm.WID and SHZT='2'
+			left join sams_factdata.v_dm_bm bm on concat(ky.SA_DEPART,'00') = bm.C_ID
+			left join sams_factdata.Finance_Prjtype prjtype on ky.pname = prjtype.cwtype
+			left join sams_data.xm_kymk dk on ky.PRJ_CODE=dk.cwbh and convert(ifnull(ky.inamt,0)/10000,decimal(20,6))=dk.dkje and  substring(ky.sdate,1,10) = dk.rzsj
+			where ky.syear=v_year;    -- 以到账表为主进行计算
+
+			update sams_data.zkt_cwhz a
+			left join sams.hr_basic  b			on a.gh=b.userid
+			set a.facultycode=b.facultycode
+			where  b.usertype='C' and substring(rzsj,1,4)=v_year; -- 项目负责人会有部门变动，全部按照人事系统变动
+
+			update sams_data.zkt_cwhz a
+			left join sams.hr_basic  b			on a.gh=b.userid and  a.facultycode=b.facultycode
+			set a.faculty=b.faculty                               -- 项目负责人会有部门变动，全部按照人事系统变动
+			where  b.usertype='C' and substring(rzsj,1,4)=v_year;
+
+
+			update sams_data.zkt_cwhz a
+			set a.facultycode = (select facultycode from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.gh in (select userid from sams_data.xm_kylwry );  -- 例外人员，这部分人的项目所属系即为表中所属系代码
+
+
+			update sams_data.zkt_cwhz a
+			set a.faculty = (select faculty from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode )
+			where a.gh in (select userid from sams_data.xm_kylwry );  -- 例外人员，这部分人的项目所属系即为表中所属系名称
+
+			-- 项目编号汇总表
+
+			truncate sams_data.zkt_bh_bdl;
+			insert into sams_data.zkt_bh_bdl(id,xmbh,xmfzrgh)
+			select 0,ky.ky_prj_code,(select hr.userid from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C' )
+			from sams_factdata.V_KY_ALLOCATE as ky
+			group  by ky_prj_code,charge_sno
+			union
+			select 0,zkt.XMBH,zkt.XMFZRGH
+			from sams_factdata.t_ky_xmzkt as zkt
+			group by XMBH,XMFZRGH
+			union
+			select 0,bh,gh
+			from sams_factdata.t_ky_bcxm
+			group by bh,gh;  
+
+			-- 课题财务到款中间表
+
+			delete from sams_data.zkt_cw_bdl where syear=v_year;
+			insert into sams_data.zkt_cw_bdl(syear,PRJ_CODE,PRJ_NAME,SA_DEPART,charge_sno,charge_name,ky_prj_code,pcode,pname,pcode2,pnam2,sdate,inamt,amt1,amt2,amt3,scbj,xmlb,htje,ksrq,jsrq,mkje,yftcf,create_time,xmfzrgh,prjtype)
+			select cw.`syear`,cw.`PRJ_CODE`,cw.`PRJ_NAME`,cw.`SA_DEPART`,cw.`charge_sno`,cw.`charge_name`,cw.`ky_prj_code`,cw.`pcode`,cw.`pname`,cw.`pcode2`,cw.`pnam2`,cw.`sdate`,cw.`inamt`,cw.`amt1`,cw.`amt2`,cw.`amt3`,cw.`scbj`,cw.`xmlb`,cw.`htje`,cw.`ksrq`,cw.`jsrq`,cw.`mkje`,cw.`yftcf`,cw.`insert_date`,(select hr.userid from sams.hr_basic hr where charge_sno = hr.userid and charge_name=hr.name_cert and usertype='C'), 
+			ifnull(cw.xmlb,kyjtype)
+			from sams_factdata.V_KY_ALLOCATE cw
+			left join sams_factdata.Finance_Prjtype prjtype on cw.pname = prjtype.cwtype
+			where cw.syear=v_year	;
+			insert into sams_data.zkt_cw_bdl(syear,PRJ_CODE,PRJ_NAME,SA_DEPART,charge_sno,charge_name,ky_prj_code,
+																			 sdate,inamt,amt1,amt2,amt3,scbj,xmlb,mkje,create_time,xmfzrgh,prjtype)
+			select cw.`p_syear`,cw.`jfkkh`,cw.`xmmc`,cw.`superiorfacultycode`,cw.`gh`,cw.`name`,cw.`xmbh`,cw.fpsj
+						 ,cw.`dkje`,cw.`xglje`,cw.`yglje`,cw.`jxje`,'N',cw.`xmfl`,cw.`mkje`,
+						 cw.`fpsj`,(select hr.userid from sams.hr_basic hr where gh = hr.userid and name=hr.name_cert and usertype='C'),
+			cw.xmfl
+			from sams_data.zkt_cw_fp cw
+			where cw.p_syear<='2014' and is_dr=1	and not exists( select 1 from sams_data.zkt_cw_bdl b
+					where cw.jfkkh=b.PRJ_CODE and cw.p_syear=b.syear) and status=77;
+			-- 子课题项目信息
+
+			truncate sams_data.xm_zkthz;
+			insert into sams_data.xm_zkthz  -- 民口项目
+			(uuid,gh,superiorfacultycode,facultycode,jfkkh,dkje,mkje,kgje,xgje,ygje,zxjx,rzsj,xmfl,xmfl1,xmbh,xmmc,pzh,ksrq,jsrq,htjf,lkdw,xmjb,xmlb,xmfzrxm,superiorfaculty,xmxz,jtzt,faculty,xmly,xmejlb,xmdl,ptjf,xm_wid,wid,xmejlb_mc,xmly_tj,xmmc_main)
+			select uuid(),if(zkt.XMFZRGH is null,cw.xmfzrgh,zkt.xmfzrgh) as gh,
+			ifnull(bm.PARENT1_C_ID,(select hr.superiorfacultycode from sams.hr_basic hr where zkt.XMFZRGH = hr.userid and usertype='C'))  as superiorfacultycode,
+			(select hr.facultycode from sams.hr_basic hr where zkt.XMFZRGH = hr.userid and usertype='C' and hr.superiorfacultycode= bm.PARENT1_C_ID) as facultycode,
+			if(zkt.JFKKH is null,cw.PRJ_CODE,zkt.jfkkh) as jfkkh,
+			convert(ifnull(cw.inamt,0)/10000,decimal(20,6)) as DKJE, -- 到款经费
+			convert(ifnull(cw.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(ifnull(cw.inamt,0)/10000,decimal(20,6))- convert(ifnull(cw.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(ifnull(cw.amt1,0) / 10000 ,decimal(20,6)) as xgje, -- 校管理费
+			convert(ifnull(cw.amt2,0) / 10000,decimal(20,6)) as ygje, -- 院系管理费
+			convert(ifnull(cw.amt3,0) / 10000,decimal(20,6)) as zxjx, -- 绩效
+			cw.sdate, -- 入账日期
+			case
+			when jbxx.XMFL='1' then '纵向项目'
+			when jbxx.XMFL='2' then '校内项目'
+			when jbxx.XMFL='3' then '横向项目'
+			end as XMFL,   -- 项目分类
+			ifnull(cw.xmlb,cw.prjtype),
+			zkt.XMBH,zkt.ZKTMC,jbxx.PZH,
+			if(ifnull(zkt.KSRQ,jbxx.KSRQ) is null,ifnull(cw.ksrq,substring((select min(b.sdate) from sams_factdata.V_KY_ALLOCATE as b
+			where b.SA_DEPART=cw.SA_DEPART and b.charge_sno=cw.charge_sno
+			and b.PRJ_CODE=cw.PRJ_CODE and b.ky_prj_code=cw.ky_prj_code),1,10)),ifnull(zkt.KSRQ,jbxx.KSRQ)) ,ifnull(ifnull(zkt.JSRQ,jbxx.JSRQ),cw.jsrq),
+			convert(ifnull(zkt.ZKTHTJE,cw.htje),decimal(20,6)),jbxx.WTDW as lkdw,
+			xmjb.mc XMJB, -- 项目级别
+			xmlb.mc as xmlb_mc, -- 项目类别
+			if(zkt.XMFZRXM is null,cw.CHARGE_NAME,zkt.xmfzrxm),
+			ifnull(ifnull(bm.C_NAME,(select hr.superiorfaculty from sams.hr_basic hr where zkt.XMFZRGH = hr.userid and usertype='C')),'上海交通大学'),ifnull(jbxx.xmxz,'102') xmxz,IFNULL(zkt.ZKTJTZT,jbxx.JTZT) JTZT,
+			(select hr.faculty from sams.hr_basic hr where zkt.XMFZRGH = hr.userid  and usertype='C' and hr.superiorfacultycode= bm.PARENT1_C_ID) as faculty,
+			xmly.mc as xmly_mc,jbxx.XMEJLB,jbxx.XMDL,convert(jbxx.PTJF,decimal(20,6)),jbxx.WID,zkt.WID,'',
+			(select mc from sams_factdata.t_dm_xm_xmlytj where DM=jbxx.XMLY_TJ) as xmly_tj,jbxx.xmmc as xmmc_main
+			from sams_factdata.t_ky_xmzkt as zkt
+			inner join sams_factdata.t_xm_jbxx jbxx on zkt.XM_WID = jbxx.WID and SHZT='2'
+			left join sams_factdata.v_dm_bm bm on zkt.XMFZRSZYX = bm.C_ID
+			left join sams_data.zkt_cw_bdl cw on zkt.JFKKH=cw.PRJ_CODE
+			left join sams_data.xm_kymk dk on cw.PRJ_CODE=dk.cwbh and convert(ifnull(cw.inamt,0)/10000,decimal(20,6))=dk.dkje and  substring(cw.sdate,1,10) = dk.rzsj
+			left join sams_factdata.t_dm_xm_xmjb xmjb on xmjb.dm = jbxx.XMJB and xmjb.SFQY=1
+			left join sams_factdata.t_dm_xm_xmlb xmlb on xmlb.dm = jbxx.XMLB and xmlb.SFQY=1
+			left join sams_factdata.t_dm_xm_xmlytj xmly on xmly.dm = jbxx.XMLY_TJ
+			-- 军工项目
+			union            -- 军工项目
+			select uuid() uuid,hr.userid gh,
+			ifnull(bm.PARENT1_C_ID,concat(cw.SA_DEPART,'00')) as superiorfacultycode,
+			(select hr.facultycode from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C' and ifnull(bm.PARENT1_C_ID,concat(cw.SA_DEPART,'00'))=hr.superiorfacultycode) facultycode,
+			PRJ_CODE jfkkh,convert(ifnull(inamt,0)/10000,decimal(20,6)) as  dkje,
+			convert(ifnull(cw.mkje,0),decimal(20,6)) as   mkje,convert(ifnull(inamt,0)/10000,decimal(20,6))-convert(ifnull(cw.mkje,0),decimal(20,6)) kgje,
+			convert(ifnull(amt1,0)/10000,decimal(20,6)) xgje,convert(ifnull(amt2,0)/10000,decimal(20,6)) ygje,
+			convert(ifnull(amt3,0)/10000,decimal(20,6)) zxjx,
+			sdate rzsj,
+			case when ifnull(cw.xmlb,prjtype.kyjtype) like '%纵' then '纵向项目' when ifnull(cw.xmlb,prjtype.kyjtype) like '%横' then '横向项目' else '校内项目' end xmfl
+			,ifnull(cw.xmlb,prjtype.kyjtype) xmfl1,ifnull(jgjbxx.xmbh,ky_prj_code) xmbh,
+			ky_prj_code xmmc,'' pzh,ifnull(jgjbxx.ksrq,substring((select min(b.sdate) from sams_factdata.V_KY_ALLOCATE as b
+			where b.SA_DEPART=cw.SA_DEPART and b.charge_sno=cw.charge_sno and b.PRJ_CODE=cw.PRJ_CODE and b.ky_prj_code=cw.ky_prj_code),1,10)) ksrq,
+			jgjbxx.jsrq,ifnull(jgjbxx.htjf,convert(cw.htje,decimal(20,6))) htjf
+			,'' lkdw,'' xmjb,'' xmlb,charge_name xmfzrxm,ifnull(bm.C_NAME,'上海交通大学') superiorfaculty,'102' xmxz,''jtzt,
+			(select hr.faculty from sams.hr_basic hr where charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C' and ifnull(bm.PARENT1_C_ID,concat(cw.SA_DEPART,'00'))=hr.superiorfacultycode) faculty,'军工' xmly,'' xmejlb,'' xmdl,'0.0' ptjf,'' xm_wid,'' wid,'' xmejlb_mc,''xmly_tj,'' xmmc_main
+			from sams_factdata.V_KY_ALLOCATE cw
+			left join sams_factdata.v_dm_bm bm on concat(cw.SA_DEPART,'00') = bm.C_ID
+			left join sams_factdata.Finance_Prjtype prjtype on cw.pname = prjtype.cwtype
+			left join sams.hr_basic hr on charge_sno = hr.ky_userid and charge_name=hr.name_cert and usertype='C'
+		  left join sams_factdata.T_KY_ALLOCATE_JBXX jgjbxx on cw.ky_prj_code=jgjbxx.xmbh and hr.userid=jgjbxx.xmfzrgh	 
+			where ifnull(cw.xmlb,prjtype.kyjtype) like '军%'
+			 -- 10年前项目，即没有子课题的项目
+			union all               
+			select uuid(),if(jbxx.XMFZRGH is null,cw.xmfzrgh,jbxx.xmfzrgh) as gh,
+			ifnull(bm.PARENT1_C_ID,(select hr.superiorfacultycode from sams.hr_basic hr where jbxx.XMFZRGH = hr.userid and usertype='C'))  as superiorfacultycode,
+			(select hr.facultycode from sams.hr_basic hr where jbxx.XMFZRGH = hr.userid and usertype='C' and hr.superiorfacultycode= bm.PARENT1_C_ID) as facultycode,
+			if(jbxx.JFKKH is null,cw.PRJ_CODE,jbxx.jfkkh) as jfkkh,
+			convert(jbxx.HTJF ,decimal(20,6)) as DKJE, -- 到款经费
+			convert(ifnull(cw.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(jbxx.HTJF ,decimal(20,6))- convert(ifnull(cw.mkje,ifnull(dk.MKJE,0)),decimal(20,6)),
+			convert(ifnull(cw.amt1,0) / 10000 ,decimal(20,6)) as xgje, -- 校管理费
+			convert(ifnull(cw.amt2,0) / 10000,decimal(20,6)) as ygje, -- 院系管理费
+			convert(ifnull(cw.amt3,0) / 10000,decimal(20,6)) as zxjx, -- 绩效
+			cw.sdate, -- 入账日期
+			case
+			when jbxx.XMFL='1' then '纵向项目'
+			when jbxx.XMFL='2' then '校内项目'
+			when jbxx.XMFL='3' then '横向项目'
+			end as XMFL,   -- 项目分类
+			case
+			when jbxx.XMFL='1' then '民纵'
+			when jbxx.XMFL='2' then '校内项目'
+			when jbxx.XMFL='3' then '民横'
+			end as XMFL1,
+			jbxx.XMBH,jbxx.XMMC,jbxx.PZH,
+			if(jbxx.KSRQ is null,ifnull(cw.ksrq,substring((select min(b.sdate) from sams_factdata.V_KY_ALLOCATE as b
+			where b.SA_DEPART=cw.SA_DEPART and b.charge_sno=cw.charge_sno
+			and b.PRJ_CODE=cw.PRJ_CODE and b.ky_prj_code=cw.ky_prj_code),1,10)),jbxx.KSRQ) ,ifnull(jbxx.JSRQ,cw.jsrq),
+			convert(ifnull(jbxx.HTJF,cw.htje),decimal(20,6)),jbxx.WTDW as lkdw,
+			xmjb.mc XMJB, -- 项目级别
+			xmlb.mc as xmlb_mc, -- 项目类别
+			if(jbxx.XMFZRXM is null,cw.CHARGE_NAME,jbxx.xmfzrxm),
+			ifnull(ifnull(bm.C_NAME,(select hr.superiorfaculty from sams.hr_basic hr where jbxx.XMFZRGH = hr.userid and usertype='C')),'上海交通大学'),jbxx.xmxz,jbxx.JTZT,
+			(select hr.faculty from sams.hr_basic hr where jbxx.XMFZRGH = hr.userid  and usertype='C' and hr.superiorfacultycode= bm.PARENT1_C_ID) as faculty,
+			xmly.mc as xmly_mc,jbxx.XMEJLB,jbxx.XMDL,convert(jbxx.PTJF,decimal(20,6)),jbxx.WID,'','',(select mc from sams_factdata.t_dm_xm_xmlytj where DM=jbxx.XMLY_TJ) as xmly_tj,jbxx.xmmc as xmmc_main
+			from sams_factdata.t_xm_jbxx as jbxx
+			left join sams_factdata.v_dm_bm bm
+			on jbxx.XMFZRSZYX = bm.C_ID
+			left join sams_data.zkt_cw_bdl cw
+			on jbxx.JFKKH=cw.PRJ_CODE
+			left join sams_data.xm_kymk dk
+			on cw.PRJ_CODE=dk.cwbh and convert(ifnull(cw.inamt,0)/10000,decimal(20,6))=dk.dkje and  substring(cw.sdate,1,10) = dk.rzsj
+			left join sams_factdata.t_dm_xm_xmjb xmjb on xmjb.dm = jbxx.XMJB and xmjb.SFQY=1
+			left join sams_factdata.t_dm_xm_xmlb xmlb on xmlb.dm = jbxx.XMLB and xmlb.SFQY=1
+			left join sams_factdata.t_dm_xm_xmlytj xmly on xmly.dm = jbxx.XMLY_TJ
+			where jbxx.SHZT='2' and not exists(select * from sams_factdata.t_ky_xmzkt a where a.XM_WID=jbxx.WID);
+
+			update sams_data.xm_zkthz zkt
+			inner join sams_factdata.t_ky_xmzkt a
+			on zkt.wid=a.WID
+			set zkt.dkje=a.DKJE
+			where not exists (select * from sams_data.zkt_cw_bdl b where a.JFKKH=b.PRJ_CODE 
+			);
+
+			update sams_data.xm_zkthz a
+			left join sams.hr_basic  b
+			on a.gh=b.userid
+			set a.facultycode=b.facultycode
+			where  b.usertype='C' and substring(ksrq,1,4)='2019';
+
+			update sams_data.xm_zkthz a
+			left join sams.hr_basic  b
+			on a.gh=b.userid and  a.facultycode=b.facultycode
+			set a.faculty=b.faculty
+			where  b.usertype='C' and substring(ksrq,1,4)='2019';
+
+
+			update sams_data.xm_zkthz a
+			set a.facultycode = (select facultycode from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.gh in (select userid from sams_data.xm_kylwry );
+
+			update sams_data.xm_zkthz a
+			set a.faculty = (select faculty from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.gh in (select userid from sams_data.xm_kylwry );
+
+
+			update sams_data.zkt_cwhz set facultycode=ifnull(facultycode,superiorfacultycode);
+			update  sams_data.zkt_cwhz set faculty=ifnull(faculty,superiorfaculty);
+			update sams_data.xm_zkthz set facultycode=ifnull(facultycode,superiorfacultycode);
+			update sams_data.xm_zkthz set faculty=ifnull(faculty,superiorfaculty);
+
+			update sams_data.xm_zkthz set xmfl1='民横' where xmfl= '横向项目' and  xmfl1 is null;
+			update sams_data.xm_zkthz set xmfl1='民纵' where xmfl= '纵向项目' and  xmfl1 is null;	
+
+			update  sams_data.xm_zkthz
+			set xmejlb_mc=(select mc from sams_factdata.t_dm_xm_xmlb where sfqy=1 and ls is not null and dm = xmejlb);
+
+			-- 子课题汇总，1表示按照到款表为主表的计算 2表示以项目表为主表的计算
+
+			delete from sams_data.zkt_hz where year=v_year;
+
+			insert into sams_data.zkt_hz(id,type,gh,superiorfacultycode,year,month,xmfl,xmfl1,xmjb,xmlb,dkje,kgje,superiorfaculty,facultycode,faculty)
+			select uuid(),1,gh,a.superiorfacultycode,substring(rzsj,1,4) as year,substring(rzsj,6,2) as month,
+			case when xmfl like '%纵' then '纵向项目'
+			when xmfl like '%横' then '横向项目'
+			else '校内项目'
+			end,xmfl as xmfl1,xmjb,xmlb,sum(dkje),sum(kgje),a.superiorfaculty,a.facultycode,a.faculty
+			from sams_data.zkt_cwhz a        -- 以到款表为主
+			where substring(rzsj,1,4)=v_year
+			group by gh,a.superiorfacultycode,a.superiorfaculty,facultycode,a.faculty,substring(rzsj,1,4) ,substring(rzsj,6,2) ,xmfl,xmjb,xmlb
+			union
+			select uuid(),2,gh,a.superiorfacultycode,
+			substring(ksrq,1,4) as year,substring(ksrq,6,2) as month,xmfl,xmfl1,'','',
+			sum(dkje),sum(kgje),a.superiorfaculty,a.facultycode,a.faculty
+			from sams_data.xm_zkthz a      -- 以项目表为主
+			where substring(ksrq,1,4)=v_year
+			group by gh,a.superiorfacultycode,a.superiorfaculty,a.facultycode,a.faculty,
+			substring(ksrq,1,4) ,substring(ksrq,6,2),xmfl,xmfl1;
+
+			-- 子课题项目合同汇总
+
+			delete from sams_data.zkt_hthz where year=v_year;
+
+			insert into sams_data.zkt_hthz(id,gh,superiorfacultycode,year,xmfl,xmfl1,xmjb,xmlb,dkje,kgje,htje)
+			select uuid(),gh,superiorfacultycode,a.year,a.txmfl,a.xmfl1,xmjb,xmlb,sum(dkje),sum(kgje),sum(htje)
+			from
+			(
+			select gh,
+			jfkkh,
+			xmbh,
+			superiorfacultycode,
+			if(ksrq is null,0,substring(ksrq, 1, 4))   as year,
+			case when xmfl like '%纵'
+			then '纵向项目'
+			when xmfl like '%横'
+			then '横向项目'
+			else '校内项目'
+			end    as  txmfl,
+			xmfl    as xmfl1,
+			xmjb,
+			xmlb,
+			sum(dkje)             as dkje,
+			sum(kgje) as kgje,
+			max(htjf)             as htje
+			from sams_data.zkt_cwhz as a
+			group by gh, jfkkh, xmbh, superiorfacultycode,year,
+			txmfl, xmfl1, xmjb, xmlb
+			) a
+			where year=v_year
+			group by gh,superiorfacultycode,a.year,a.txmfl,a.xmfl1,xmjb,xmlb;
+
+			-- 项目子课题展示表
+
+			truncate sams_data.xm_zkthz_show ;
+
+			insert into sams_data.xm_zkthz_show(uuid,gh,superiorfacultycode,facultycode,jfkkh,dkje,mkje,kgje,xgje,ygje,zxjx,xmfl,xmfl1,xmbh,xmmc,ksrq,jsrq,htjf,xmjb,xmlb,xmfzrxm,superiorfaculty,xmxz,jtzt,hzdw,pzh,xmejlb,xmdl,ptjf,xm_wid,wid,xmly,xmmc_main)
+			select uuid,gh,superiorfacultycode,facultycode,jfkkh,sum(dkje),sum(mkje),sum(kgje),
+			sum(xgje),sum(ygje),sum(zxjx),xmfl,xmfl1,xmbh,xmmc,ksrq,jsrq,htjf,xmjb,xmlb,xmfzrxm,
+			superiorfaculty,
+			(select mc from sams_factdata.t_dm_xm_xmxz where xmxz=DM and sfqy=1),
+			-- '主持', -- 子课题负责人和人事系统保持一致
+			case jtzt when '1' then '在研' when '2' then '结题' when '3' then '终止' else '其他' end,lkdw,pzh,
+			(select mc from sams_factdata.t_dm_xm_xmlb where sfqy=1 and ls is not null and dm=xmejlb),xmdl,ptjf,xm_wid,wid,xmly,xmmc_main
+			from sams_data.xm_zkthz  -- 汇总项目子课题表
+			group by ifnull(gh,0),ifnull(jfkkh,0),ifnull(xmbh,0),wid;
+			
+			INSERT INTO `sams_data`.`xm_zkthz_show`(`uuid`, `gh`, `superiorfacultycode`, `facultycode`, `jfkkh`, `dkje`, `mkje`, `kgje`, `xgje`, `ygje`, `zxjx`, `xmfl`, `xmfl1`, `xmbh`, `xmmc`, `ksrq`, `jsrq`, `htjf`, `xmjb`, `xmlb`, `xmfzrxm`, `superiorfaculty`, `xmxz`, `jtzt`, `hzdw`, `pzh`, `xmejlb`, `xmdl`, `ptjf`, `xm_wid`, `wid`, `xmly`)
+			select `uuid`, `gh`, `superiorfacultycode`, `facultycode`, `jfkkh`, `dkje`, `mkje`, `kgje`, `xgje`, `ygje`, `zxjx`, `xmfl`, `xmfl1`, `xmbh`, `xmmc`, `ksrq`, `jsrq`, `htjf`, `xmjb`, `xmlb`, `xmfzrxm`, `superiorfaculty`, `xmxz`, `jtzt`, `hzdw`, `pzh`, `xmejlb`, `xmdl`, `ptjf`, `xm_wid`, `wid`, `xmly` from sams_data.xm_zkthz_show_dl;
+			
+
+		update sams_data.xm_zkthz_show set htjf='95' where xmbh='15GFH-H701-347';
+		update  sams_factdata.t_ky_xmzkt set zkthtje='280' where xmbh='13Z103100007' and jfkkh='BC3400027' and zkthtje='200.0000';
+		update sams_data.xm_zkthz_show set xmxz='参加' where xmejlb='医工交叉基金AE604102' and superiorfacultycode not like '7%';
+		update sams_data.xm_zkthz_show set jtzt='结题',dkje='8' where gh='10683' and xmbh='14X100010101';
+		update sams_data.xm_zkthz_show set jtzt='结题',dkje='6' where gh='10683' and xmbh='16X190020068';
+		update sams_data.`xm_zkthz_show`  set jtzt='结题' where xmbh in ('14Z101010022','13Z103100007','15H100000642','15Z101020037');
+		update  sams_data.xm_zkthz_show set htjf='100' where xmbh='17GFC-GB02-199';
+
+		delete from sams_data.`xm_zkthz_show` where gh='11066' and xmbh in ('18GFA-ZZ07-069-1','18GFA-ZZ07-069-2','18GFA-ZZ07-069-3');
+
+		INSERT INTO `sams_data`.`xm_zkthz_show`(`uuid`, `gh`, `superiorfacultycode`, `facultycode`, `jfkkh`, `dkje`, `mkje`, `kgje`, `xgje`, `ygje`, `zxjx`, `xmfl`, `xmfl1`, `xmbh`, `xmmc`, `ksrq`, `jsrq`, `htjf`, `xmjb`, `xmlb`, `xmfzrxm`, `superiorfaculty`, `xmxz`, `jtzt`, `hzdw`, `pzh`, `xmejlb`, `xmdl`, `ptjf`, `xm_wid`, `wid`, `xmly`) VALUES ('cd047169-01f7-11ea-9b08-fa163e2a8c7a', '11066', '03000', 'SEIEE15', '', 52, 0.000000, 52.000000, 2.080000, 0.520000, 0.000000, '纵向项目', '军纵', '18GFA-ZZ07-069', '18GFA-ZZ07-069', '2018-05-21', NULL, '80', '', '', '王易因', '电子信息与电气工程学院', '主持', '其他', '', '', NULL, '', 0.000000, '', '', '军工');
+
+		update sams_data.xm_zkthz_show  set dkje='28.5' where xmbh='19Z103010072' and gh='11450';
+		update sams_data.xm_zkthz_select set situation=null where situation='';
+		update sams_data.xm_zkthz_show  set jtzt='结题',dkje='82.000000' where xmbh='14Z103010056' and gh='10674';
+		update sams_data.xm_zkthz_show  set jtzt='结题',dkje='62.000000' where xmbh='13Z101010010' and gh='10674';
+		update sams_data.xm_zkthz_show  set  dkje='20.000000' where xmbh='18X100040049' and gh='63190';
+		update  sams_data.xm_zkthz_show set xmxz='主持' where gh='09305' and xmbh='10GZR101385'; -- 参与方式缺失：主持
+		
+		update  sams_data.xm_zkthz_show set DKJE='28'  where gh='60453' and xmbh='12Z103150011';
+		update  sams_data.xm_zkthz_show set dkje='20' where gh='60453' and xmbh='13GFZ-ZZ10-066';
+		update sams_data.xm_zkthz_show set htjf='8',jsrq='2018-12-05' where xmbh='16GFH-HK03-42';
+		
+		update sams_data.xm_zkthz_show set htjf = 40,dkje='40' where gh='60453' and xmbh='17GFA-ZZ08-051';
+		update sams_data.xm_zkthz_show set htjf = 20.000000 where gh='60453' and xmbh='13GFZ-ZZ10-066';
+		update sams_data.xm_zkthz_show set jtzt = '结题' where xmbh in ('12X100010056','15Z1240010022','16H100000489','16H100000447','17Z1240010014',
+		'14Z103010049','16Z1240010017','12Z102050004','15H100000158','14Z1240010025') and gh = '10004';
+		
+		update sams_data.xm_zkthz_show  set dkje='80' where gh='10004' and xmbh='14Z103010049';
+
+		update sams_data.xm_zkthz_show set dkje = 80.000000 where gh='60453' and xmbh='14Z103010049';
+
+		delete from sams_data.xm_zkthz_show where gh = '08950' and xmbh = '13Z101010018' and htjf = '0.000000';
+		update  sams_data.xm_zkthz_show set jtzt='结题' where gh='63115' and xmbh='17Z102060068';
+		update sams_data.xm_zkthz_show  set dkje='110' where gh='10004' and xmbh='12GFZ-ZZ02-047';
+		
+		update sams_data.xm_zkthz_show  set xmlb='企事业单位委托科技项目' where xmbh in('19H300000393','19H100000555') and gh='63033';
+		update sams_data.xm_zkthz_show  set xmlb='企事业单位委托科技项目' where xmbh in('18H300000330','15H100000337')  ;
+		update sams_data.xm_zkthz_show  set jtzt='在研' where xmbh in('17Z101140178') and gh='63033';
+		update sams_data.xm_zkthz_show  set jtzt='结题' where xmbh in('17H100000806','17H300000375','17H300000374','15H100000439') and gh='63033';
+		update sams_data.xm_zkthz_show  set jtzt='结题'  where  xmbh in('15H100000337') ;
+		
+		update sams_data.xm_zkthz_show set jtzt='结题' where xmbh in('08547_2','08547_3','2016YFC0102700','06DKW505007','06GKJ001001','G05WN03',
+'04DKW509005','16H100000611','16H100000611','17H300000208','15X190020056','14X190020020','12X190020027') and  gh='08547' ;
+
+		update sams_data.xm_zkthz_show set jtzt='在研' where xmbh in('08547_1','19511104202','18DZ2295400',' JCZXSJB2018-022','JCZXSJB2018-028','2017003','17H100000444') and  gh='08547' ;
+
+		update sams_data.xm_zkthz_show set dkje=htjf where  jtzt='结题' and gh='08547';
+		update sams_data.xm_zkthz_show set dkje='6.5' where  xmbh='2017003' and gh='08547';
+
+		update sams_data.xm_zkthz_show set htjf='120' where gh='10543'  and xmbh='16GFH-HT01-025';
+		update sams_data.xm_zkthz_show set jtzt='结题' where xmbh in('18H300000155','14X100010039','18H100000467','13Z101090002','12Z101020017') and  gh='10620' ;
+		update sams_data.xm_zkthz_show set dkje='140' where xmbh='18H100000824' and  gh='10620' ;
+		update sams_data.xm_zkthz_show set xmxz='主持' where xmbh='06DKW505007' and  gh='08547' ;
+		update sams_data.xm_zkthz_show set dkje='81' where xmbh='12Z103010213' and  gh='09876' ;
+		update sams_data.xm_zkthz_show set dkje='150' where  xmbh='13Z111020007';
+		
+		
+		-- 20191109 学院复核数据
+			update sams_data.xm_zkthz_show set dkje='15' where  xmbh='13Z103010028' and gh='08547';
+			update sams_data.xm_zkthz_show set dkje='250' where  xmbh='18GFH-HT01-318' and gh='10543';
+			update sams_data.xm_zkthz_show set dkje='8' where  xmbh='14X100010039' and gh='10620';
+			update sams_data.xm_zkthz_show set dkje='100' where  xmbh='18H100000824' and gh='10620';
+			update sams_data.xm_zkthz_show set dkje='30' where  xmbh='19Z103010150' and gh='10620';
+			update sams_data.xm_zkthz_show set dkje='12' where  xmbh='19X190020169' and gh='10683';
+			update sams_data.xm_zkthz_show set dkje='73' where  xmbh='14Z103010068' and gh='10876';
+			update sams_data.xm_zkthz_show set dkje='23' where  xmbh='13Z103150058' and gh='10943';
+			update sams_data.xm_zkthz_show set dkje='8' where  xmbh='15X100080041' and gh='10943';
+			update sams_data.xm_zkthz_show set htjf='50',dkje='0' where  xmbh='19H100000644' and gh='10943';
+			update sams_data.xm_zkthz_show set htjf='40',dkje='40' where  xmbh='17GFA-ZZ08-051' and gh='60453';
+			update sams_data.xm_zkthz_show set dkje='15' where  xmbh='19Z103150062' and gh='63033';
+			update sams_data.xm_zkthz_show set dkje='20' where  xmbh='18X100040009' and gh='63039';
+			update sams_data.xm_zkthz_show set dkje='13' where  xmbh='14H100000295';
+			update sams_data.xm_zkthz_show set htjf='95' where  jfkkh='GE0300351';
+			update sams_data.xm_zkthz_show set htjf='145' where  jfkkh='GO0300037';
+
+     update sams_data.xm_zkthz_show  set dkje='5',jtzt='结题' where xmbh='13X100040050' and gh='11072';
+     update sams_data.xm_zkthz_show  set dkje='2',jtzt='结题'  where xmbh='16X100100040' and gh='11072';
+
+		update  sams_data.xm_zkthz_show set dkje='15' where gh='60453' and xmbh='13GFZ-ZZ10-066';
+	  update sams_data.xm_zkthz_show set htjf = '15' where gh='60453' and xmbh='13GFZ-ZZ10-066';
+	
+	  -- 20191111 学院复合，丁梦雪提供
+		update   sams_data.`xm_zkthz_show` set jtzt='结题' where   xmbh='17GFA-ZD02-383' and gh='60500'; 
+    update   sams_data.`xm_zkthz_show` set ksrq='2012.06',jsrq='2014.06' where   xmbh='12GFZ-ZZ10-036' and gh='60500'; 
+    update   sams_data.`xm_zkthz_show` set jtzt='结题' where    xmmc like '%肝癌血清学早期筛查的纳米传感微纳器件研究%' and gh='60500'; 
+   update   sams_data.`xm_zkthz_show`  set jtzt='结题' where  xmbh='11GFZ-JYB-047' and gh='60500'; 
+   update   sams_data.`xm_zkthz_show`  set jtzt='结题' where  xmbh='11GFH-HT01-212' and gh='60500'; 	 
+	 update sams_data.`xm_zkthz_show` set xmlb='航天测控研究所（横向）'  where   xmbh like '%12GFZ-ZD03-13%' and gh='10490';
+	 update   sams_data.`xm_zkthz_show`  set dkje='100' ,jtzk='结题' where   xmmc like '%面向警务应用的视频理解和结构化描述关键技术研究%' and xmbh='SA0300381'and gh='10490'; 	 
+	 update   sams_data.`xm_zkthz_show`  set dkje='26' where  xmbh='13Z103150077' and gh='50363'; 
+	 update  sams_data.`xm_zkthz_show` set dkje='82' where   gh='10819'  and xmbh='14Z103010052';
+	 update sams_data.xm_zkthz_show set ksrq='2015-01-01',jsrq='2017-12-31' where jfkkh='GC0300178';
+   update sams_data.`xm_zkthz_show`  set jtzt='结题' where    jfkkh in('BC0300292','SC0300051') and gh='10819';  
+update sams_data.`xm_zkthz_show`  set jtzt='结题'  where xmbh='11GZR101212' and gh='10490';
+		
+		-- 20191111 学院复合，祁柯修改
+		update sams_data.xm_zkthz_show set dkje='46.60' where xmbh='14H100000575' and gh='09305';
+update sams_data.xm_zkthz_show set dkje='38.40' where xmbh='14Z116010001' and gh='09355';
+update sams_data.xm_zkthz_show set dkje='55.50' where xmbh='14Z118010004' and gh='09355';
+update sams_data.xm_zkthz_select set situation='30' where xmbh='18H100000854' and gh='09355'; 
+update sams_data.xm_zkthz_show set htjf='20.60',dkje='15.30' where xmbh='14H100000459' and gh='10336';
+update sams_data.xm_zkthz_select set situation='15.30' where xmbh='14H100000459' and gh='10336'; 
+update sams_data.xm_zkthz_show set dkje='60' where xmbh='12H100000435' and gh='10391';
+update sams_data.xm_zkthz_show set dkje='82' where xmbh='13Z103010064' and gh='10391';
+update sams_data.xm_zkthz_show set dkje='82' where xmbh='14Z103010052' and gh='10819';
+update sams_data.xm_zkthz_show set dkje='21.447323' where xmbh='13H300000282' and gh='10892';
+update sams_data.xm_zkthz_show set dkje='15.000000' where xmbh='14H100000644' and gh='10906';
+update sams_data.xm_zkthz_show set dkje='23.000000' where xmbh='13Z103150058' and gh='10943';
+update sams_data.xm_zkthz_select set situation='21.447323' where xmbh='13H300000282' and gh='10892';
+update sams_data.xm_zkthz_select set situation='15.000000' where xmbh='14H100000644' and gh='10906';
+update sams_data.xm_zkthz_select set situation='23.000000' where xmbh='13Z103150058' and gh='10943';
+update sams_data.xm_zkthz_select set situation='64.000000' where xmbh='15Z103010037' and gh='10943';
+update sams_data.xm_zkthz_select set situation='67.500000' where xmbh='18GFH-HK03-268' and gh='10943';
+update sams_data.xm_zkthz_select set situation='11.400000' where xmbh='18GFH-HK03-472' and gh='10943';
+update sams_data.xm_zkthz_select set situation='12.154000' where xmbh='18H100000649' and gh='10943';
+update sams_data.xm_zkthz_select set situation='307.976500' where xmbh='18Z101140217' and gh='10943';
+update sams_data.xm_zkthz_select set situation='25.000000' where xmbh='19GFA-ZZ09-075' and gh='10943';
+update sams_data.xm_zkthz_select set situation='51.500000' where xmbh='18H100000547' and gh='10950';
+update sams_data.xm_zkthz_select set situation='93.730000' where xmbh='18H300000392' and gh='10950';
+update sams_data.xm_zkthz_show set dkje='25.000000' where xmbh='13Z103150089' and gh='11108';
+update sams_data.xm_zkthz_show set dkje='500.000000' where xmbh='14H100000789' and gh='11117';
+update sams_data.xm_zkthz_show set dkje='304.000000' where xmbh='13Z103030003' and gh='50163';
+update sams_data.xm_zkthz_show set dkje='26.000000' where xmbh='13Z103150077' and gh='50363';
+update sams_data.xm_zkthz_show set dkje='80.000000' where xmbh='14Z103010053' and gh='60481';
+update sams_data.xm_zkthz_select set situation='25.000000' where xmbh='13Z103150089' and gh='11108';
+update sams_data.xm_zkthz_select set situation='250.000000' where xmbh='14H100000789' and gh='11117';
+update sams_data.xm_zkthz_select set situation='209.000000' where xmbh='13Z103030003' and gh='50163';
+update sams_data.xm_zkthz_select set situation='26.000000' where xmbh='13Z103150077' and gh='50363';
+update sams_data.xm_zkthz_select set situation='80.000000' where xmbh='14Z103010053' and gh='60481'; 
+update sams_data.xm_zkthz_select set situation='9.950000' where xmbh='19H300000393' and gh='63033';
+update sams_data.xm_zkthz_select set situation='8.343000' where xmbh='19H200000009' and gh='63039';
+-- 学院复合数据
+update sams_data.xm_zkthz_show set xmejlb='青年科研基金' where xmbh='11GZR101212' and gh='10490';
+
+update sams_data.xm_zkthz_show set htjf='92.000000' where xmbh='17GFH-ZW09-20';
+			-- 各个类别学科平均值计算
+
+			delete from sams_data.zkt_xkpjz where year=v_year;
+
+			insert into sams_data.zkt_xkpjz(id,year,facultytype,dkje,kgje,mhdkje,mzdkje,jhdkje,jzdkje,xknum)
+			select uuid(),year,ifnull(b.facultytype,0),
+			sum(dkje),sum(kgje),sum(mh),sum(mz),sum(jh),sum(jz),
+			count(distinct a.superiorfacultycode)
+			from (select superiorfacultycode,year as year,sum(dkje) dkje,sum(kgje) kgje,
+			sum(case when xmfl1='民横' then dkje end) as mh,
+			sum(case when xmfl1='民纵' then dkje end) as mz,
+			sum(case when xmfl1='军横' then dkje end) as jh,
+			sum(case when xmfl1='军纵' then dkje end) as jz
+			from sams_data.zkt_hz where type=1 group by superiorfacultycode,year) a
+			left join sams_factdata.DM_Facultytype b
+			on a.superiorfacultycode=b.superiorfacultycode
+			where year =v_year
+			group by year,ifnull(b.facultytype,0);
+			
+			
+			-- 子课题与主项目负责人不一致时将子课题的负责人项目性质变为参加
+			update sams_data.xm_zkthz_show a inner join sams_factdata.t_xm_jbxx b on a.xm_wid=b.WID and a.xmbh=b.xmbh
+			set a.xmxz='参加'
+			where a.is_dr=0 and a.gh<>b.XMFZRGH and a.xmfzrxm<>b.XMFZRXM;
+			
+			select 'OK';
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('7','P_ZKT_Info','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('7','P_ZKT_Info','0',now(),'执行成功');
+	END IF;
+
+END

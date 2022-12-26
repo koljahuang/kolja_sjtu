@@ -1,0 +1,144 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `xkpg_teacher_insert`(IN user_id VARCHAR(255), IN num INT)
+    COMMENT '学科评估-教师借调-新增'
+BEGIN
+    IF num=0 THEN
+        # 插入学科评估人员借调表
+        INSERT INTO sams_factdata.xkpg_teacher_ryjd(UUID,gh,superiorfacultycode,superiorfaculty,major_level1_No,major_level1,sex,NAME,round_id)
+        SELECT UUID(),a.gh,b.PARENT1_C_ID,
+        (SELECT C_NAME FROM sams_factdata.v_dm_bm WHERE C_ID=b.PARENT1_C_ID) AS superiorfaculty,
+        IFNULL(BB.major_level1_No,c.major_level1_No) major_level1_No,
+        IFNULL(BB.major_level1,c.major_level1) major_level1,
+        xb.C_NAME xb,xm,
+        (SELECT id FROM sams_factdata.xkpg_lc WHERE state=1 ORDER BY pglc DESC LIMIT 1) AS kk
+        FROM sams_factdata.jg_jbxx AS a
+        LEFT JOIN sams_factdata.xkpg_teacher_info_base BB ON a.gh=BB.gh
+        LEFT JOIN sams_factdata.v_dm_bm b ON IFNULL(CONCAT(BB.superiorfacultycode,'00'),a.YXDM) = b.C_ID
+        LEFT JOIN (SELECT DISTINCT major_level1_No,major_level1,round_id FROM  sams_factdata.xkpg_major_detail WHERE scbj='N' )AS c
+        ON SUBSTR(IFNULL(a.CSZYM,a.SXZYM),1,4) = c.major_level1_No
+        LEFT JOIN sams_factdata.xkpg_lc AS lc ON c.round_id=lc.ID AND state=1
+        LEFT JOIN sams_factdata.dm_xb xb ON xb.C_ID=a.xbm
+        WHERE ((a.RYZTM ='9' AND SUBSTRING(a.schoolny,1,4)<'2020') OR SUBSTRING(LTXNY,1,4)>='2016') AND a.scbj='N' AND a.gh IN (user_id);
+    ELSE
+        # 插入学科评估教师信息明细表
+        INSERT INTO sams_data.xkpg_teacher_info_mx
+        SELECT UUID(),IFNULL(ryjd.jd_superiorfacultycode,ryjd.superiorfacultycode) AS superiorfacultycode ,
+        IFNULL(jd_superiorfaculty,superiorfaculty) AS superiorfaculty,
+          IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No) AS major_level1_no,
+          IFNULL(ryjd.jd_major_level1,ryjd.major_level1) AS major_level1,
+        (CASE WHEN a.ZJM ='1' THEN '正高'
+              WHEN a.ZJM ='2'  THEN '副高'
+              WHEN a.ZJM ='3' THEN '中级'
+              WHEN a.ZJM ='4' THEN '初级'
+              ELSE '其他' END ) AS zyjszw,
+         a.gh,
+          xm AS NAME ,csrq AS birthdate,
+          (CASE WHEN a.XBM = '2' THEN '女' WHEN a.XBM='1' THEN '男' ELSE '其他' END) AS sex,
+        e.academicdeg AS zgxw,e.schoolname AS zgxwhddw,
+          (CASE WHEN  a.jzglbm='111' THEN 1 ELSE 0 END) AS zrjs,
+--         (CASE WHEN 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)<36 THEN 1 ELSE 0 END) AS agele35,
+--         ( CASE WHEN 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=36 AND 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)<46 THEN 1 ELSE 0 END) AS agem35,
+--         ( CASE WHEN 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=46 AND 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)<56 THEN 1 ELSE 0 END) AS agem45,
+--         ( CASE WHEN 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=56 AND 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)<61 THEN 1 ELSE 0 END) AS agem55,
+--         ( CASE WHEN 2019- CAST(SUBSTRING(CSRQ,1,4) AS INT)>60 THEN 1 ELSE 0 END) AS agem60_num,
+-- qike 20200618 按新指标调整 https://git.dev.sjtu.edu.cn/sams/sams/issues/2503
+        (CASE WHEN 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)<35 THEN 1 ELSE 0 END) AS agele35,
+        ( CASE WHEN 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=35 AND 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)<45 THEN 1 ELSE 0 END) AS agem35,
+        0 AS agem45,
+        ( CASE WHEN 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=45 AND 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)<60 THEN 1 ELSE 0 END) AS agem55,
+        ( CASE WHEN 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)>=60 THEN 1 ELSE 0 END) AS agem60_num,				
+        ( CASE WHEN e.academicdeg LIKE '%博士%' THEN 1 ELSE 0 END) AS doctor,
+        ( CASE WHEN a.lxhg='是' THEN 1 ELSE 0 END) AS lxhg,
+        ( CASE WHEN a.GJM NOT IN ('CN','TW','MO','HK') THEN 1 ELSE 0 END) AS wj,
+        ( CASE WHEN a.XBM = '2' THEN 1 ELSE 0 END) AS woman,
+        ( CASE WHEN xsnum>0 THEN 1 ELSE 0 END) AS sd,
+        ( CASE WHEN xslb='2' AND xsnum>0 THEN 1 ELSE 0 END) AS bd,ryjd.round_id,f.ml_id,cast(a.RYZTM as int) ryztm
+        FROM sams_factdata.jg_jbxx  AS a
+        LEFT JOIN sams_factdata.xkpg_teacher_ryjd AS ryjd
+        ON a.gh=ryjd.gh
+        LEFT JOIN sams_factdata.xkpg_major_detail AS c
+        ON IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No)=c.major_level1_No AND ryjd.round_id=c.round_id
+        LEFT JOIN
+        (
+          SELECT a.id,a.pgmc,b.ml_id AS ml_id,b.ml_details,starttime,endtime
+          FROM sams_factdata.xkpg_lc AS a
+          LEFT JOIN sams_factdata.xkpg_ml AS b
+          ON a.ID=b.ID_round
+          WHERE a.state=1
+        ) AS f
+        ON c.xkml_index_custom=f.ml_id AND ryjd.round_id=f.id
+        LEFT JOIN
+          (SELECT dsgh,xslb,COUNT(DISTINCT xh) AS xsnum
+           FROM sams_data.yjs_mx_info
+          GROUP BY dsgh,xslb) AS d
+        ON a.gh = d.dsgh
+        LEFT JOIN
+          (
+             SELECT a.userid, a.academiccode  academiccode, a.academicdeg,
+                     a.graduationym, TRIM(a.schoolname) AS schoolname, b.mc,row_number() over (PARTITION BY userid ORDER BY academiccode ASC, graduationym DESC) AS rank
+               FROM sams.hr_academicdeg a
+               LEFT JOIN sams_factdata.DM_GB2659 b  ON a.schooltype=b.dm
+               WHERE a.academiccode>'0'
+         ) e
+        ON a.gh = e.userid AND e.rank=1
+        WHERE ((a.RYZTM ='9' AND SUBSTRING(a.schoolny,1,4)<'2020') OR SUBSTRING(LTXNY,1,4)>='2016') AND a.scbj='N' AND a.gh IN (user_id)
+        GROUP BY IFNULL(ryjd.jd_superiorfacultycode,ryjd.superiorfacultycode),IFNULL(jd_superiorfaculty,superiorfaculty),
+          IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No),IFNULL(ryjd.jd_major_level1,ryjd.major_level1),zyjszw,gh,ryjd.round_id,f.ml_id;
+        # 插入学科评估骨干教师表
+        INSERT INTO sams_data.xkpg_dbxggjs
+        SELECT  UUID(),IFNULL(ryjd.jd_superiorfacultycode,ryjd.superiorfacultycode) AS superiorfacultycode ,
+        IFNULL(jd_superiorfaculty,ryjd.superiorfaculty) AS superiorfaculty,
+          IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No) AS major_level1_no,
+          IFNULL(ryjd.jd_major_level1,ryjd.major_level1) AS major_level1,
+          a.gh,xm AS NAME ,csrq AS birthdate,(CASE WHEN 2020- CAST(SUBSTRING(CSRQ,1,4) AS INT)<45 THEN 0 ELSE 1 END) AS isvoer45,
+          (CASE WHEN a.XBM = '2' THEN '女' WHEN a.XBM='1' THEN '男' ELSE '其他' END) AS sex,
+          (CASE WHEN a.ZJM ='1' THEN '正高'
+              WHEN a.ZJM ='2'  THEN '副高'
+              WHEN a.ZJM ='3' THEN '中级'
+              WHEN a.ZJM ='4' THEN '初级'
+              ELSE '其他' END ) AS jszw,
+        (CASE WHEN xslb='2' AND xsnum>0 THEN '博导'  WHEN xslb='1'AND xsnum>0 THEN '硕导' ELSE '无' END) AS dslb,
+        m.academicdeg AS zgxw,m.schoolname AS zgxwhddw,g.OrganName AS xstx,LXHG AS hwjl,
+          (CASE WHEN a.GJM NOT IN ('CN','TW','MO','HK') THEN '是' ELSE '否' END) AS wjjs,
+          (CASE WHEN xsnum>0 THEN '是'  ELSE '否' END) AS zyxwds,
+          c.major_level2 AS skfx,'' AS xsjz,'' AS bz,0 AS isgg,c.round_id,f.ml_id,(case when a.jzglbm='111' then 1 else 0 end) is_zrjs,
+        cast(a.RYZTM as int) ryztm,null is_bd,(case when g.OrganName like '%院士%' then 1 else 0 end) is_ys
+        FROM sams_factdata.jg_jbxx AS a
+        LEFT JOIN sams_factdata.xkpg_teacher_ryjd AS ryjd
+        ON a.gh=ryjd.gh
+        LEFT JOIN sams_factdata.xkpg_major_detail AS c
+        ON IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No)=c.major_level1_No AND ryjd.round_id=c.round_id
+        LEFT JOIN
+        (
+          SELECT a.id,a.pgmc,b.ml_id AS ml_id,b.ml_details,starttime,endtime
+          FROM sams_factdata.xkpg_lc AS a
+          LEFT JOIN sams_factdata.xkpg_ml AS b
+          ON a.ID=b.ID_round
+          WHERE a.state=1
+        ) AS f
+        ON c.xkml_index_custom=f.ml_id AND ryjd.round_id=f.id
+        LEFT JOIN
+          (SELECT dsgh,MAX(xslb) AS xslb,COUNT(DISTINCT xh) AS xsnum
+           FROM sams_data.yjs_mx_info
+          GROUP BY dsgh) AS e
+        ON a.gh = e.dsgh
+        LEFT JOIN
+          (
+                SELECT a.userid, a.academiccode  academiccode, a.academicdeg,
+                 a.graduationym, TRIM(a.schoolname) AS schoolname, b.mc,row_number() over (PARTITION BY userid ORDER BY academiccode ASC, graduationym DESC) AS rank
+                 FROM sams.hr_academicdeg a
+                 LEFT JOIN sams_factdata.DM_GB2659 b  ON a.schooltype=b.dm
+                 WHERE a.academiccode>'0'
+          ) m ON a.gh = m.userid AND m.rank=1
+        LEFT JOIN
+        (
+            SELECT GH,GROUP_CONCAT(TypeName) AS OrganName
+            FROM sams.RCJHK
+            GROUP BY GH
+        ) g
+        ON a.gh=g.GH
+        WHERE ((a.RYZTM ='9' AND SUBSTRING(a.schoolny,1,4)<'2020') OR SUBSTRING(LTXNY,1,4)>='2016') AND a.scbj='N' AND a.gh IN (user_id)
+          GROUP BY IFNULL(ryjd.jd_superiorfacultycode,ryjd.superiorfacultycode) ,
+        IFNULL(jd_superiorfaculty,superiorfaculty),
+          IFNULL(ryjd.jd_major_level1_No,ryjd.major_level1_No),IFNULL(ryjd.jd_major_level1,ryjd.major_level1),gh,ryjd.round_id,f.ml_id;
+    END IF;
+END

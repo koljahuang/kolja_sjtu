@@ -1,0 +1,157 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_ZKT_TCF`()
+BEGIN
+  #Routine body goes here...
+
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+		-- 子课题统筹费中间表
+
+		truncate sams_data.zkt_tc_mdl;
+		insert into sams_data.zkt_tc_mdl(cwbh,superiorfacultycode,rzsj,dkje,kgje,his_dkje)
+		select a.jfkkh,a.superiorfacultycode,a.rzsj,sum(ifnull(a.dkje,0)),sum(ifnull(a.kgje,0)),0.0
+		from sams_data.zkt_cw_info a where a.superiorfacultycode = '03000'
+		group by a.jfkkh,a.rzsj;
+		update  sams_data.zkt_tc_mdl a
+		set his_dkje = ifnull((select sum(ifnull(b.kgje,0)) from sams_data.zkt_cw_info b 
+		where b.superiorfacultycode='03000' and b.jfkkh=a.cwbh and b.superiorfacultycode=a.superiorfacultycode and b.rzsj<a.rzsj),0.0);
+
+		-- 统筹费
+
+		truncate sams_data.zkt_tcf;
+		insert into sams_data.zkt_tcf(uuid,gh,name,fpsj,dkje,mkje,kgje,xglje,yglje,jxje,superiorfacultycode,facultycode,jfkkh,xmbh,xmmc,p_gh,p_name,p_rzsj,p_syear,p_dkje,p_mkje,p_kgje,p_xglje,p_yglje,p_jxje,fp_status,p_id,xmfl,ys_tcje,ss_tcje)
+		select uuid(),gh,fzr_name,now(),zktcw.dkje,ifnull(mkje,0.0),zktcw.kgje,xgje,ygje,zxjx,zktcw.superiorfacultycode,hr.facultycode,
+		jfkkh,xmbh,xmmc,gh,fzr_name,zktcw.rzsj,syear,zktcw.dkje,ifnull(mkje,0.0),zktcw.kgje,xgje,ygje,zxjx,0,null,
+		case when xmfl like '%纵' then '纵向项目'
+		when xmfl like '%横' then '横向项目'
+		else '校内项目' end,
+		ifnull(yftcf,case when xmfl like '%横' and (tc.his_dkje+zktcw.kgje)<=50
+		then round((10000*zktcw.kgje)*0.04,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>50 and (tc.his_dkje+zktcw.kgje)<=100 and tc.his_dkje<=50
+		then round(10000*(50-tc.his_dkje)*0.04,2)
+		+round(10000*((tc.his_dkje+zktcw.kgje)-50)*0.03,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>50 and
+		(tc.his_dkje+zktcw.kgje)<=100 and
+		tc.his_dkje>50
+		then round((10000*zktcw.kgje)*0.03,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>100 and
+		(tc.his_dkje+zktcw.kgje)<=500 and
+		tc.his_dkje<=50
+		then round(10000*(50-tc.his_dkje)*0.04,2)
+		+round(10000*50*0.03,2)
+		+round(10000*(zktcw.kgje-50+tc.his_dkje-50)*0.02,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>100 and
+		(tc.his_dkje+zktcw.kgje)<=500 and
+		tc.his_dkje>50 and
+		tc.his_dkje<=100
+		then round(10000*(100-tc.his_dkje)*0.03,2)
+		+round(10000*(zktcw.kgje+tc.his_dkje-100)*0.02,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>100 and
+		(tc.his_dkje+zktcw.kgje)<=500 and
+		tc.his_dkje>100
+		then round((10000*zktcw.kgje)*0.02,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>500 and
+		tc.his_dkje<=50
+		then round(10000*(50-tc.his_dkje)*0.04,2)
+		+round(10000*50*0.03,2)
+		+round(10000*400*0.02,2)
+		+round(10000*(zktcw.kgje-400-50+tc.his_dkje-50)*0.01,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>500 and
+		tc.his_dkje>50 and
+		tc.his_dkje<=100
+		then round(10000*(100-tc.his_dkje)*0.03,2)
+		+round(10000*400*0.02,2)
+		+round(10000*(zktcw.kgje-400+tc.his_dkje-100)*0.01,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>500 and
+		tc.his_dkje>100 and
+		tc.his_dkje<=500
+		then round(10000*tc.his_dkje*0.02,2)
+		+round(10000*(zktcw.kgje+tc.his_dkje-500)*0.01,2)
+		when xmfl like '%横' and
+		(tc.his_dkje+zktcw.kgje)>500 and
+		tc.his_dkje>500
+		then round(10000*zktcw.kgje*0.01,2)
+		when xmfl like '%纵' then round((10000*zktcw.dkje)*0.02,2) end),0.0
+		from sams_data.zkt_cw_info zktcw
+		left join sams_data.zkt_tc_mdl tc
+		on zktcw.jfkkh=tc.cwbh and zktcw.superiorfacultycode=tc.superiorfacultycode and zktcw.rzsj = tc.rzsj
+		left join
+		(select userid,superiorfacultycode,facultycode from sams.hr_basic where usertype='C') as hr
+		on zktcw.gh = hr.userid
+		where zktcw.superiorfacultycode='03000';
+
+		update sams_data.zkt_tcf a
+		set a.facultycode = (select facultycode from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+		where a.gh in (select userid from sams_data.xm_kylwry );        
+
+
+/*
+insert into sams_factdata.evaluate_memberlist
+select uuid() id,A.ItemID,null,A.gh user_id,B.name_cert name,B.birthdate,B.gender,B.superiorfaculty,B.superiorfacultycode,B.faculty,B.facultycode,C.mc,D.start_time,D.end_time,2019,1,null,0 from sams_factdata.RS_SB_Apply A
+inner join sams.hr_basic B on B.userid=A.gh and usertype='C'
+LEFT OUTER JOIN sams_factdata.dm_gb8561 C on A.TitleCurrent=C.dm
+left join sams_factdata.RS_SB_BeginDate D on A.gh=D.gh 
+where not exists (select * from sams_factdata.evaluate_memberlist AA where A.gh=AA.user_id );
+
+
+update sams_factdata.evaluate_memberlist A
+inner join sams_factdata.RS_SB_BeginDate D on A.user_id=D.gh
+set A.startdate=D.start_time,A.enddate=D.end_time
+where  evaluatetype=1 and D.start_time!='' and D.start_time is not null;
+
+insert into sams_data.zcps_academic_enter (id,name,start_time,end_time,position,gh)
+select distinct uuid() id,A.jzdwmc name,A.starttime,A.endtime,A.jzzw position,A.gh from sams_factdata.SHXSJZK A 
+where jzdwxz in ('80','90') and qr=2 and not exists(select * from sams_data.zcps_academic_enter B where A.gh=B.gh and A.jzdwmc=B.name );
+
+insert into sams_data.zcps_professional_affiliations(id,organization,time,position,gh,year,createTime,updateTime,type)
+select distinct uuid() id,A.jzdwmc name,A.starttime,A.jzzw position,A.gh,YEAR(NOW()),now(),now(),null from sams_factdata.SHXSJZK A 
+where (jzdwxz not in ('80','90') or jzdwxz='' or jzdwxz is null) and LENGTH(A.jzdwmc)<300 and qr=2 and  not exists(select * from sams_data.zcps_professional_affiliations B where A.gh=B.gh and A.jzdwmc=B.organization);
+
+
+
+insert into sams_data.zcps_teach_work_others (id,task,student_number,content,remark,gh,start_time,end_time)
+select distinct uuid() id,AA.projecttype,AA.studentnum,AA.projectname content,null remark,AA.rscgh gh,AA.planbegintime start_time,AA.planendtime end_time  from sams_factdata.vwPPAadvisor AA
+inner join sams.hr_basic B on AA.rscgh=B.userid
+where not exists (select * from sams_data.zcps_teach_work_others BB where AA.rscgh=BB.gh and BB.task=AA.projecttype  and BB.content=AA.projectname );
+
+insert into sams_data.zcps_teach_work_others(id,task,student_number,content,remark,gh,start_time,end_time)
+select uuid() id,'带毕业设计' task,1 student_number,B.projname content, CONCAT(B.stuname , '(' , B.stuno , ')') remark,A.userid,concat(CAST(substring(B.dbdate,1,4)-1 AS CHAR)) start_time,B.dbdate end_time from sams_factdata.JX_BYSJ_SUB A
+inner join sams_factdata.JX_BYSJ B on A.projid=B.id
+inner join sams.hr_basic B on A.userid=B.userid
+where  not exists (select * from sams_data.zcps_teach_work_others BB where A.userid=BB.gh and BB.task='带毕业设计' and BB.content=B.projname ) ;
+
+update sams.hr_other A
+inner join  
+(
+select replace(group_concat(concat(substring(hryny,1,7) ,' ' , ifnull(bfdw,'') ,' ' ,ifnull(jlrymc,'') ,'(' ,ifnull(DM_GB8560.mc,'') , ')\n')),',','') jc,RYCHK.gh
+from sams_factdata.RYCHK 
+LEFT  JOIN sams_factdata.DM_GB8560 ON RYCHK.rychm = DM_GB8560.dm 
+left join sams_factdata.evaluate_memberlist B on RYCHK.gh=B.user_id and B.evaluatetype=1
+where RYCHK.qr>1 
+and RYCHK.xh>0 and RYCHK.hryny>B.startdate
+and (ltrim(rtrim(RYCHK.bfdw))<>'' and RYCHK.bfdw is not null)		-- 要有颁奖单位
+and (sams_factdata.RYCHK.rychm<>'998' and ltrim(rtrim(RYCHK.rychm))<>'' and RYCHK.rychm is not null) -- 奖励类型不能是“无”等
+group by RYCHK.gh
+ORDER BY RYCHK.printxh asc,RYCHK.hryny DESC) B on A.gh=B.gh
+set A.rewardAndPunishment=B.jc
+where (A.rewardAndPunishment='' or A.rewardAndPunishment is null or A.rewardAndPunishment='测试') and (flag=0 or flag is null);
+*/
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('9','P_ZKT_TCF','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('9','P_ZKT_TCF','0',now(),'执行成功');
+	END IF;					
+	
+END

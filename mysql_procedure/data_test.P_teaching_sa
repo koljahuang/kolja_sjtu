@@ -1,0 +1,81 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_teaching_sa`()
+BEGIN
+--
+-- SA端
+--
+
+-- 毕业设计SA端
+drop view if exists data_test.bysj_sa;
+create view data_test.bysj_sa as
+(
+select teacheruserid gh,  '25' jxlxm,     projname jxnr,  xss, zdscore,  2 qr, 'SA__BYSJ' SJLY, dbdate, left(dbdate,4) dbyear
+from (select teacheruserid,  projname, zdscore, dbdate, count(*) xss from (select trim(teacheruserid) teacheruserid,  trim(projname) projname, zdscore, dbdate from sams_factdata.JX_BYSJ d left join sams_factdata.JX_BYSJ_SUB e on d.id = e.projid where d.scbj='N' and e.qr=77 and left(d.dbdate,4) >'2015' and  d.teacheruserid is not null and d.projname is not null and d.zdscore is not null and teacheruserid in (select userid from sams.hr_basic where usertype='C' and userid<>'WP1805090001' )) c group by teacheruserid,  projname, dbdate, zdscore ) b
+);
+
+drop table if exists data_test.t_bysj_sa;
+create table data_test.t_bysj_sa as
+(
+select * from data_test.bysj_sa
+);
+
+alter table data_test.t_bysj_sa add primary key (gh,  jxnr, dbdate);
+
+
+-- 班主任SA端
+drop view if exists data_test.monitor_sa;
+create view data_test.monitor_sa
+as (select *
+FROM (select sa_id, gh, jxlxm, jxnr, jxpy, jxsny, jxzny, qr,  xss, SJLY
+from
+(
+select d.id sa_id, trim(d.userid) gh, '41' jxlxm, 	trim(d.classno) jxnr, left(trim(d.assess),100) jxpy, e.startdate jxsny,  e.enddate jxzny, 2 qr,  d.studentnum xss, 'SA_MONI' SJLY from sams_factdata.JX_CLASSTEACHER d left join sams_edu.gproj_schoolcalendar_order e on d.schoolyear=e.schoolyear and d.term=e.semester where d.scbj='N' and d.qr=77  and left(e.startdate,4) > '2015' and  d.userid is not null and d.classno is not null and d.userid in (select userid from sams.hr_basic where usertype='C' and userid<>'WP1805090001' )
+) c)a);
+
+drop table if exists data_test.t_monitor_sa;
+create table data_test.t_monitor_sa as
+(
+select * from data_test.monitor_sa
+);
+
+alter table data_test.t_monitor_sa add primary key (sa_id);
+
+
+-- PRP，大创等SA端
+drop view if exists data_test.prpanddc_sa;
+create view data_test.prpanddc_sa as
+(
+select trim(rscgh) gh, projectid, case when  trim(ProjectType)='PRP' then '26'
+                                         when  trim(ProjectType)='大学生创新实验' then '61'
+                                         when trim(ProjectType)='国家级创新实践' then '62'
+                                         when trim(ProjectType)='上海市级创新实践' then '63'
+                                         when trim(ProjectType)='校级创新实践' then '64'
+                                         when trim(ProjectType)='本科生暑期科研见习岗位' then '65'
+                                         when trim(ProjectType)='指导学生参赛' then '66'
+                                         when trim(ProjectType)='校企大创' then '67'
+                                 end as jxlxm,
+ProjectType, trim(projectName) jxnr, finalscore jxpy, PlanBeginTime jxsny, PlanEndTime jxzny, 2 qr, studentnum xss, 'SA_PRDC' SJLY from sams_factdata.vwPPAadvisor a where  left(a.PlanBeginTime,4) >= '2016' and rscgh is not null and rscgh in (select userid from sams.hr_basic where usertype='C' and userid<>'WP1805090001' ));
+
+drop table if exists data_test.t_prpanddc_sa;
+create table data_test.t_prpanddc_sa as
+(
+select * from data_test.prpanddc_sa
+);
+
+alter table data_test.t_prpanddc_sa add primary key (gh, projectid);
+
+-- 其他教学内容SA端
+drop view if exists data_test.jx_other_sa;
+create view data_test.jx_other_sa as
+(
+select id sa_id, gh, jxlxm, jxnr, jxgzl, jxpy, jxsny, jxzny, cgdh, 2 qr, tjbs, xss, jxfg, zxss, bz,Sign, QrBZ, 'SA_OTHE' SJLY, Sfhj,  Xsxm, Jxmc from sams_factdata.jx_other a where jxlxmc!='' and module_type = 'TEACHING' and a.qr = 77  and left(a.jxsny,4) >'2015' and gh is not null and jxnr is not null and gh in (select userid from sams.hr_basic where usertype='C' and userid<>'WP1805090001' )
+);
+
+drop table if exists data_test.t_jx_other_sa;
+create table data_test.t_jx_other_sa as
+(
+select * from data_test.jx_other_sa
+);
+
+alter table data_test.t_jx_other_sa add primary key (sa_id);
+
+END

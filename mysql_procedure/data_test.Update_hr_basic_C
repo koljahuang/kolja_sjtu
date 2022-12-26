@@ -1,0 +1,46 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_hr_basic_C`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断是否有更新信息
+	if ((select count(*) from sams.hr_basic where scbj='N')<1000) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('23','Update_hr_basic_C','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('23','Update_hr_basic_C','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+        create temporary table sams.tmp_hr_basic like sams.hr_basic;
+        insert into sams.tmp_hr_basic select * from sams.hr_basic;
+
+        update sams.hr_basic aa
+        inner join (select * from sams.tmp_hr_basic where usertype='S') bb
+            on aa.userid in (
+                select a.userid from sams.tmp_hr_basic a
+                    left join sams.tm_org b
+                        on a.superiorfacultycode=b.topid and a.facultycode=b.code
+                    left join sams_factdata.v_dm_bm c
+                        on a.superiorfacultycode=c.PARENT_C_ID and a.facultycode=c.C_ID
+                where a.usertype='C' and a.jobstatus='9' and a.issjt='0'
+                  and b.id is null and c.C_ID is null
+                  and a.facultycode<>a.superiorfacultycode
+                  and a.userid<>'10110' and a.userid<>'11075')
+            and aa.userid=bb.userid
+        set aa.facultycode=bb.facultycode, aa.faculty=bb.faculty
+        where aa.usertype='C';
+
+        drop temporary table sams.tmp_hr_basic;
+
+	    IF EXCEPTION = 1 THEN
+	        ROLLBACK;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('23','Update_hr_basic_C','1',now(),'执行失败');
+	    ELSE
+	        COMMIT;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('23','Update_hr_basic_C','0',now(),'执行成功');
+	    END IF;
+    end if;
+END

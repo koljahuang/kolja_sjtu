@@ -1,0 +1,997 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_sr_patent`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断ip表是否有更新信息
+	if ((select count(*) from data_test.ip_temp_table)=0) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+   		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+   		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','0',now(),'执行成功，无更新内容');
+		END IF;
+    elseif ((select count(*) from data_test.ip_temp_table)>10000) then
+	    IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+   		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+   		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','2',now(),'执行成功，更新内容过多');
+		END IF;
+    else
+
+		#### 将zljsm按照510-001专利成果负责人，520-002专利成果参与人的对应规则进行替换
+		update data_test.ip_temp_table set zljsm='001' where zljsm='510';
+		update data_test.ip_temp_table set zljsm='002' where zljsm='520';
+		update data_test.ip_temp_table set SJLY='知识产权管理信息平台' where SJLY='ip';
+		update data_test.ip_temp_table set zlh=replace(replace(zlh,'CN','ZL'),'cn','ZL') where zlh like '%CN%';
+
+
+        update data_test.ip_temp_table set ky_gh=replace(ltrim(replace(gh,'0',' ')),' ','0') where ky_gh is null;
+        update data_test.ip_temp_table a
+        inner join (select * from sams.hr_basic where usertype='C') b
+        on a.ky_gh=b.ky_userid and a.xm=b.name_cert
+        set a.gh=b.userid
+        where ky_gh is not null;
+
+        update data_test.ip_temp_table ip, sams.hr_basic hr    #### 通过工号来更新没有superiorfacultycode的条目
+        set ip.superiorfacultycode=hr.superiorfacultycode, ip.superiorfaculty=hr.superiorfaculty
+        where ip.gh=hr.userid and (hr.usertype='C');
+
+        update data_test.ip_temp_table ip, sams.hr_basic hr     #### 通过jaccount来更新没有工号的条目，添加工号
+        set ip.gh = hr.userid, ip.ky_gh=hr.ky_userid, ip.superiorfacultycode=hr.superiorfacultycode, ip.superiorfaculty=hr.superiorfaculty
+        where (ip.gh is null) and (hr.usertype='C') and (ip.jaccount=hr.jaccount) and (ip.xm=hr.name_cert);
+
+        update data_test.ip_temp_table ip         #### 通过姓名+学院匹配hr_basic来更新没有工号的条目，添加工号
+        inner join(
+            select ip1.id,hr1.userid,hr1.ky_userid,hr1.superiorfacultycode
+            from (
+                select *
+                from data_test.ip_temp_table
+                where superiorfaculty<>'' and gh is null) ip1
+            inner join (
+                select *
+                from sams.hr_basic
+                where usertype='C') as hr1
+            on (ip1.superiorfaculty=hr1.superiorfaculty) and (ip1.xm=hr1.name_cert)) hr
+        on ip.id = hr.id
+        set ip.gh = hr.userid, ip.ky_gh=hr.ky_userid, ip.superiorfacultycode=hr.superiorfacultycode
+		where ip.gh is null;
+
+		update data_test.ip_temp_table set year_of_assessment=substring_index(current_timestamp,'-',1)
+		where (year_of_assessment is null or year_of_assessment ='') and superiorfacultycode='01000';
+
+
+        delete from data_test.ip_temp_table where gh is null;     #### 删除匹配后工号依然为空的
+        truncate data_test.cxr_dr_gx;    #### 清空临时表
+
+        insert data_test.cxr_dr_gx (ip_id, sr_id, sr_scbj, sr_bz, flag)
+        select ip_id,sr_id,sr_scbj,
+               (case
+                   when gh_flag=2 then concat(current_date,', 更新:源头有工号+目标匹配方式（工号+专利号）')
+                   when gh_flag=1 then concat(current_date,', 更新:源头无工号但有jaccount+目标匹配方式（工号+专利号）')
+                   else concat(current_date,', 更新:源头无工号无jaccount+目标匹配方式（工号+专利号）')
+                   end) as sr_bz,
+               (1) as flag
+        from (
+            select ip.id as ip_id,
+               ip.gh_inserted_by_teacher as gh_flag,
+               sr.id as sr_id,
+               sr.scbj as sr_scbj
+            from (
+                select *
+                from (
+                    select *
+                    from data_test.ip_temp_table
+                    group by gh,Ipid) iptemptable
+                where zlh<>''
+                group by Ipid,gh,zlh) as ip
+            inner join (
+                select *
+                from sams_factdata.sr_patent)as sr
+            on ip.zlh=sr.zlh and (ip.gh=sr.gh or ip.ky_gh=sr.gh)
+            ) as test
+        order by ip_id;
+
+        #### 向临时表dr_gx内插入第二类(工号+专利号数字)匹配成功条目的ip_id,sr_id以及分类标志flag和备注sr_bz
+        insert data_test.cxr_dr_gx (ip_id, sr_id, sr_scbj, sr_bz, flag)
+        select ip_id,sr_id,sr_scbj,
+               (case
+                   when gh_flag=2 then concat(current_date,', 更新:源头有工号+目标匹配方式（工号+专利号数字）')
+                   when gh_flag=1 then concat(current_date,', 更新:源头无工号但有jaccount+目标匹配方式（工号+专利号数字）')
+                   else concat(current_date,', 更新:源头无工号无jaccount+目标匹配方式（工号+专利号数字）')
+                   end) as sr_bz,
+               (2) as flag
+        from (
+            select ip.id as ip_id,
+               ip.gh_inserted_by_teacher as gh_flag,
+               sr.id as sr_id,
+               sr.scbj as sr_scbj
+            from (
+                select *
+                from (
+                    select *
+                    from data_test.ip_temp_table
+                    group by gh,Ipid) iptemptable
+                where id not in (
+                    select ip_id
+                    from data_test.cxr_dr_gx
+                ) and zlh<>''
+                group by Ipid,gh,zlh) as ip
+            inner join (
+                select *
+                from sams_factdata.sr_patent
+                where id not in (
+                    select sr_id
+                    from data_test.cxr_dr_gx
+                ))as sr
+            on substring_index(replace(replace(replace(ip.zlh,' ',''),'CN',''),'ZL',''),'.',1)=substring_index(replace(replace(replace(sr.zlh,' ',''),'CN',''),'ZL',''),'.',1) and (ip.gh=sr.gh or ip.ky_gh=sr.gh)
+            ) as test
+        order by ip_id;
+
+        #### 向临时表dr_gx内插入第三类(工号+专利名称)匹配成功条目的ip_id,sr_id以及分类标志flag和备注sr_bz
+        insert data_test.cxr_dr_gx (ip_id, sr_id, sr_scbj, sr_bz, flag)
+        select ip_id,sr_id,sr_scbj,
+               (case
+                   when gh_flag=2 then concat(current_date,', 更新:源头有工号+目标匹配方式（工号+专利名称）')
+                   when gh_flag=1 then concat(current_date,', 更新:源头无工号但有jaccount+目标匹配方式（工号+专利名称）')
+                   else concat(current_date,', 更新:源头无工号无jaccount+目标匹配方式（工号+专利名称）')
+                   end
+                   ) as sr_bz,
+               (3) as flag
+        from (
+            select ip.id as ip_id,
+               ip.gh_inserted_by_teacher as gh_flag,
+               sr.id as sr_id,
+               sr.scbj as sr_scbj
+            from (
+                select *
+                from (
+                    select *
+                    from data_test.ip_temp_table
+                    group by gh,Ipid) iptemptable
+                where id not in (
+                    select ip_id
+                    from data_test.cxr_dr_gx
+                ) and zlmc<>'' and nation<>''
+                group by Ipid,gh,zlmc,nation) as ip
+            inner join (
+                select *
+                from sams_factdata.sr_patent
+                where id not in (
+                    select sr_id
+                    from data_test.cxr_dr_gx
+                ))as sr
+            on replace(ip.zlmc,' ','')=replace(sr.zlmc,' ','') and (ip.gh=sr.gh or ip.ky_gh=sr.gh) and substring_index(replace(ip.nation,'（','('),'(',1)=substring_index(replace(sr.nation,'（','('),'(',1)
+            ) as test
+        order by ip_id;
+
+        #### 向临时表dr_gx内插入第四类(工号+授权号)匹配成功条目的ip_id,sr_id以及分类标志flag和备注sr_bz
+        insert data_test.cxr_dr_gx (ip_id, sr_id, sr_scbj, sr_bz, flag)
+        select ip_id,sr_id,sr_scbj,
+               (case
+                   when gh_flag=2 then concat(current_date,', 更新:源头有工号+目标匹配方式（工号+授权号）')
+                   when gh_flag=1 then concat(current_date,', 更新:源头无工号但有jaccount+目标匹配方式（工号+授权号）')
+                   else concat(current_date,', 更新:源头无工号无jaccount+目标匹配方式（工号+授权号）')
+                   end
+                   ) as sr_bz,
+               (4) as flag
+        from (
+            select ip.id as ip_id,
+               ip.gh_inserted_by_teacher as gh_flag,
+               sr.id as sr_id,
+               sr.scbj as sr_scbj
+            from (
+                select *
+                from (
+                    select *
+                    from data_test.ip_temp_table
+                    group by gh,Ipid) iptemptable
+                where id not in (
+                    select ip_id
+                    from data_test.cxr_dr_gx
+                ) and sqh<>''
+                group by Ipid,gh,sqh) as ip
+            inner join (
+                select *
+                from sams_factdata.sr_patent
+                where id not in (
+                    select sr_id
+                    from data_test.cxr_dr_gx
+                ))as sr
+            on substring_index(replace(replace(replace(replace(ip.sqh,' ',''),':',''),'CN',''),'ZL',''),'.',1)=substring_index(replace(replace(replace(replace(sr.sqh,' ',''),':',''),'CN',''),'ZL',''),'.',1) and (ip.gh=sr.gh or ip.ky_gh=sr.gh)
+            ) as test
+        order by ip_id;
+
+        #### 向临时表dr_gx内插入第五类以上四种方法都未匹配成功的条目的ip_id,sr_id以及分类标志flag和备注sr_bz
+        insert data_test.cxr_dr_gx (ip_id, sr_bz, flag)
+        select ip_id,
+               (case
+                   when gh_flag=2 then concat(current_date,', 新增:源头有工号+未匹配成功')
+                   when gh_flag=1 then concat(current_date,', 新增:源头无工号但有jaccount+未匹配成功')
+                   else concat(current_date,', 新增:源头无工号无jaccount+未匹配成功')
+                   end
+                   ) as sr_bz,
+               (0) as flag
+        from (
+            select ip.id as ip_id,
+               ip.gh_inserted_by_teacher as gh_flag
+            from (
+                select *
+                from (
+                    select *
+                    from data_test.ip_temp_table
+                    group by gh,Ipid) iptemptable
+                where id not in (
+                    select ip_id
+                    from data_test.cxr_dr_gx
+                )) as ip) as test
+        order by ip_id;
+
+        ################  备份dr_gx表，方便溯源操作
+        insert data_test.cxr_dr_gx_bz (uid, ip_id, sr_id, flag, sr_bz, sr_scbj)  select * from data_test.cxr_dr_gx;
+
+
+        #############################
+        # 开始日志和sr_patent的写入
+        #############################
+
+        #### 对目标表sr_patent内qr=77的条目进行部分字段更新，源头数据工号来源于自带或jaccount匹配    (先日志后更新)
+		insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if((sr.xm is null or sr.xm='') and ifnull(sr.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(sr.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if((sr.superiorfacultycode is null or sr.superiorfacultycode='') and ifnull(sr.superiorfacultycode,'')<>ifnull(ip.superiorfacultycode,''),concat('单位代码:', ifnull(sr.superiorfacultycode,''), '-->', ifnull(ip.superiorfacultycode,''), ';'),''),
+		           if((sr.superiorfaculty is null or sr.superiorfaculty='') and ifnull(sr.superiorfaculty,'')<>ifnull(ip.superiorfaculty,''),concat('单位:', ifnull(sr.superiorfaculty,''), '-->', ifnull(ip.superiorfaculty,''), ';'),''),
+		           if((sr.zlmc is null or sr.zlmc='') and ifnull(sr.zlmc,'')<>ifnull(ip.zlmc,''),concat('专利名称:', ifnull(sr.zlmc,''), '-->', ifnull(ip.zlmc,''), ';'),''),
+		           if((sr.zlh is null or sr.zlh='') and ifnull(sr.zlh,'')<>ifnull(ip.zlh,''),concat('专利号:', ifnull(sr.zlh,''), '-->', ifnull(ip.zlh,''), ';'),''),
+		           if((sr.sqdw is null or sr.sqdw='') and ifnull(sr.sqdw,'')<>ifnull(ip.sqdw,''),concat('权利人:', ifnull(sr.sqdw,''), '-->', ifnull(ip.sqdw,''), ';'),''),
+		           if((sr.sqny is null or sr.sqny='') and ifnull(sr.sqny,'')<>ifnull(ip.sqny,''),concat('申请年月:', ifnull(sr.sqny,''), '-->', ifnull(ip.sqny,''), ';'),''),
+		           if((sr.zljsm is null or sr.zljsm='') and ifnull(sr.zljsm,'')<>ifnull(ip.zljsm,''), concat('本人角色:', (case sr.zljsm
+		               when '001' then '专利成果负责人'
+		               when '002' then '专利成果参与人'
+		               else '其他'
+		               end
+		               ), '-->', if(ifnull(ip.zljsm,'')<>'002','专利成果负责人','专利成果参与人'), ';'),''),
+		           if((sr.pm is null) and ifnull(sr.pm,'')<>ifnull(ip.pm,''),concat('排名:', ifnull(sr.pm,''), '-->', ifnull(ip.pm,''), ';'),''),
+		           if((sr.zllbm is null or sr.zllbm='') and ifnull(sr.zllbm,'')<>ifnull(ip.zllbm,''),concat('专利类别码:', (case ifnull(sr.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), '-->', (case ifnull(ip.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), ';'),''),
+		           if((sr.sqh is null or sr.sqh='') and ifnull(sr.sqh,'')<>ifnull(ip.sqh,''),concat('授权号:', ifnull(sr.sqh,''), '-->', ifnull(ip.sqh,''), ';'),''),
+		           if((sr.sqzt is null or sr.sqzt='') and ifnull(sr.sqzt,'')<>ifnull(ip.sqzt,''),concat('授权状态:', ifnull(sr.sqzt,''), '-->', ifnull(ip.sqzt,''), ';'),''),
+		           if((sr.shouqrq is null or sr.shouqrq='') and ifnull(sr.shouqrq,'')<>ifnull(ip.shouqrq,''),concat('授权日期:', ifnull(sr.shouqrq,''), '-->', ifnull(ip.shouqrq,''), ';'),''),
+		           if((sr.nation is null or sr.nation='') and ifnull(sr.nation,'')<>ifnull(ip.nation,'') ,concat('专利授予国别:', ifnull(sr.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if((sr.SJLY is null or sr.SJLY='') and ifnull(sr.SJLY,'')<>ifnull(ip.SJLY,''),concat('数据来源:', ifnull(sr.SJLY,''), '-->', ifnull(ip.SJLY,''), ';'),''),
+		           if((sr.SchoolNo is null or sr.SchoolNo='') and ifnull(sr.SchoolNo,'')<>ifnull(ip.SchoolNo,''),concat('学校编号:', ifnull(sr.SchoolNo,''), '-->', ifnull(ip.SchoolNo,''), ';'),''),
+		           if((sr.AgencyNo is null or sr.AgencyNo='') and ifnull(sr.AgencyNo,'')<>ifnull(ip.AgencyNo,''),concat('事务所编号:', ifnull(sr.AgencyNo,''), '-->', ifnull(ip.AgencyNo,''), ';'),''),
+		           if((sr.zlmc_EN is null or sr.zlmc_EN='') and ifnull(sr.zlmc_EN,'')<>ifnull(ip.zlmc_EN,''),concat('专利名称——英文:', ifnull(sr.zlmc_EN,''), '-->', ifnull(ip.zlmc_EN,''), ';'),''),
+		           if((sr.inventor_finisher is null or sr.inventor_finisher='') and ifnull(sr.inventor_finisher,'')<>ifnull(ip.inventor_finisher,''),concat('发明人列表:', ifnull(sr.inventor_finisher,''), '-->', ifnull(ip.inventor_finisher,''), ';'),''),
+		           if((sr.scbj is null or sr.scbj='') and ifnull(sr.scbj,'')<>ifnull(ip.scbj,''),concat('删除标记:', if(ifnull(sr.scbj,'')<>'N','已删除','未删除'), '-->', if(ifnull(ip.scbj,'')<>'N','已删除','未删除'), ';'),''),
+		           if((sr.is_inserted_by_teacher is null or sr.is_inserted_by_teacher='') and ifnull(sr.is_inserted_by_teacher,'')<>ifnull(ip.is_inserted_by_teacher,''),concat('是否老师新增:', if(ifnull(sr.is_inserted_by_teacher,'')<>'N','是','否'), '-->', if(ifnull(ip.is_inserted_by_teacher,'')<>'N','是','否'), ';'),''),
+		           if((sr.islock is null or sr.islock='') and ifnull(sr.islock,'')<>ifnull(ip.islock,''),concat('锁定状态:', if(ifnull(sr.islock,'')<>'1','未锁定','锁定'), '-->', if(ifnull(ip.islock,'')<>'1','未锁定','锁定'), ';'),''),
+		           if((sr.sfjdwdydw is null) and ifnull(sr.sfjdwdydw,'')<>ifnull(ip.sfjdwdydw,''),concat('学校署名:', (case ifnull(sr.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->', (case ifnull(ip.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(sr.patent_application_type,'')<>ifnull(ip.patent_application_type,''),concat('专利申请类型:', ifnull(sr.patent_application_type,''), '-->', ifnull(ip.patent_application_type,''), ';'),''),
+		           if(ifnull(sr.current_status,'')<>ifnull(ip.current_status,''),concat('法律状态:', ifnull(sr.current_status,''), '-->', ifnull(ip.current_status,''), ';'),'')) as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',sr.Ipid,'gh',sr.gh,'xh',sr.xh,'xm',sr.xm,'superiorfacultycode',sr.superiorfacultycode,'superiorfaculty',sr.superiorfaculty,'ExaminingLogId',sr.ExaminingLogId,'ExpertId',sr.ExpertId,'zlmc',sr.zlmc,'zlzz',sr.zlzz,'zlh',sr.zlh,'sqdw',sr.sqdw,'sqny',sr.sqny,'zljsm',sr.zljsm,'qr',sr.qr,'tjbs',sr.tjbs,'pm',sr.pm,'zllbm',sr.zllbm,'patent_application_type',sr.patent_application_type,'sqh',sr.sqh,'sygjm',sr.sygjm,'gkrq',sr.gkrq,'sqzt',sr.sqzt,'shouqrq',sr.shouqrq,'nation',sr.nation,'printxh',sr.printxh,'filename',sr.filename,'SJLY',sr.SJLY,'QrBZ',sr.QrBZ,'SchoolNo',sr.SchoolNo,'AgencyNo',sr.AgencyNo,'Agency',sr.Agency,'zlmc_EN',sr.zlmc_EN,'inventor_finisher',sr.inventor_finisher,'create_timestamp',sr.create_timestamp,'update_timestamp',sr.update_timestamp,'scbj',sr.scbj,'inventor',sr.inventor,'claimusername',sr.claimusername,'sfkhgsr',sr.sfkhgsr,'bz',sr.bz,'year_of_assessment',sr.year_of_assessment,'is_inserted_by_teacher',sr.is_inserted_by_teacher,'islock',sr.islock,'sfjdwdydw',sr.sfjdwdydw,'transfer',sr.transfer,'situation',sr.situation,'user_type',sr.user_type,'current_status',sr.current_status) as datapre,
+	           JSON_OBJECT('id',sr.id,
+			   'Ipid',ip.Ipid,
+			   'gh',ip.gh,
+			   'xh',if(sr.xh is null,ip.xh,sr.xh),
+			   'xm',if(sr.xm is null or sr.xm='',ip.xm,sr.xm),
+			   'superiorfacultycode',if(sr.superiorfacultycode is null or sr.superiorfacultycode='',ip.superiorfacultycode,sr.superiorfacultycode),
+			   'superiorfaculty',if(sr.superiorfaculty is null or sr.superiorfaculty='',ip.superiorfaculty,sr.superiorfaculty),
+			   'ExaminingLogId',if(sr.ExaminingLogId is null,ip.ExaminingLogId,sr.ExaminingLogId),
+			   'ExpertId',if(sr.ExpertId is null or sr.ExpertId='',ip.ExpertId,sr.ExpertId),
+			   'zlmc',if(sr.zlmc is null or sr.zlmc='',ip.zlmc,sr.zlmc),
+			   'zlzz',if(sr.zlzz is null or sr.zlzz='',ip.zlzz,sr.zlzz),
+			   'zlh',if(sr.zlh is null or sr.zlh='',ip.zlh,sr.zlh),
+			   'sqdw',if(sr.sqdw is null or sr.sqdw='',ip.sqdw,sr.sqdw),
+			   'sqny',if(sr.sqny is null or sr.sqny='',ip.sqny,sr.sqny),
+			   'zljsm',if(sr.zljsm is null or sr.zljsm='',ip.zljsm,sr.zljsm),
+			   'qr','77',
+			   'tjbs',if(sr.tjbs is null,ip.tjbs,sr.tjbs),
+			   'pm',if(sr.pm is null,ip.pm,sr.pm),
+			   'zllbm',if(sr.zllbm is null or sr.zllbm='',ip.zllbm,sr.zllbm),
+			   'patent_application_type',ip.patent_application_type,
+			   'sqh',if(sr.sqh is null or sr.sqh='',ip.sqh,sr.sqh),
+			   'sygjm',if(sr.sygjm is null or sr.sygjm='',ip.sygjm,sr.sygjm),
+			   'gkrq',if(sr.gkrq is null or sr.gkrq='',ip.gkrq,sr.gkrq),
+			   'sqzt',if(sr.sqzt is null or sr.sqzt='',ip.sqzt,sr.sqzt),
+			   'shouqrq',if(sr.shouqrq is null or sr.shouqrq='',ip.shouqrq,sr.shouqrq),
+			   'nation',if(sr.nation is null or sr.nation='',ip.nation,sr.nation),
+			   'printxh',if(sr.printxh is null,ip.printxh,sr.printxh),
+			   'filename',if(sr.filename is null or sr.filename='',ip.filename,sr.filename),
+			   'SJLY',if(sr.SJLY is null or sr.SJLY='',ip.SJLY,sr.SJLY),
+			   'QrBZ',if(sr.QrBZ is null or sr.QrBZ='',ip.QrBZ,sr.QrBZ),
+			   'SchoolNo',if(sr.SchoolNo is null or sr.SchoolNo='',ip.SchoolNo,sr.SchoolNo),
+			   'AgencyNo',if(sr.AgencyNo is null or sr.AgencyNo='',ip.AgencyNo,sr.AgencyNo),
+			   'Agency',if(sr.Agency is null or sr.Agency='',ip.Agency,sr.Agency),
+			   'zlmc_EN',if(sr.zlmc_EN is null or sr.zlmc_EN='',ip.zlmc_EN,sr.zlmc_EN),
+			   'inventor_finisher',if(sr.inventor_finisher is null or sr.inventor_finisher='',ip.inventor_finisher,sr.inventor_finisher),
+			   'create_timestamp',sr.create_timestamp,
+			   'update_timestamp',ip.update_timestamp,
+			   'scbj',if(sr.scbj is null or sr.scbj='',ip.scbj,sr.scbj),
+			   'inventor',if(sr.inventor is null or sr.inventor='',ip.inventor,sr.inventor),
+			   'claimusername',if(sr.claimusername is null or sr.claimusername='',ip.claimusername,sr.claimusername),
+			   'sfkhgsr',if(sr.sfkhgsr is null or sr.sfkhgsr='',ip.sfkhgsr,sr.sfkhgsr),
+			   'bz',if(sr.bz is null or sr.bz='',ip.bz,sr.bz),
+			   'year_of_assessment',if(sr.year_of_assessment is null or sr.year_of_assessment='',ip.year_of_assessment,sr.year_of_assessment),
+			   'is_inserted_by_teacher',if(sr.is_inserted_by_teacher is null or sr.is_inserted_by_teacher='',ip.is_inserted_by_teacher,sr.is_inserted_by_teacher),
+			   'islock',if(sr.islock is null or sr.islock='',ip.islock,sr.islock),
+			   'sfjdwdydw',if(sr.sfjdwdydw is null,ip.sfjdwdydw,sr.sfjdwdydw),
+			   'transfer',if(sr.transfer is null or sr.transfer='',ip.transfer,sr.transfer),
+			   'situation',if(sr.situation is null or sr.situation='',ip.situation,sr.situation),
+			   'user_type',if(sr.user_type is null or sr.user_type='',ip.user_type,sr.user_type),
+			   'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=77) and (sr.id=ip.sr_id);
+
+		update sams_factdata.sr_patent as sr, (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        set sr.patent_application_type=ip.patent_application_type,
+            sr.current_status = ip.current_status,
+            sr.Ipid = ip.Ipid,
+            sr.zlmc=ip.zlmc,
+            sr.xh=if(sr.xh is null,ip.xh,sr.xh),
+            sr.xm=if(sr.xm is null or sr.xm='',ip.xm,sr.xm),
+            sr.superiorfacultycode=if(sr.superiorfacultycode is null or sr.superiorfacultycode='',ip.superiorfacultycode,sr.superiorfacultycode),
+            sr.superiorfaculty=if(sr.superiorfaculty is null or sr.superiorfaculty='',ip.superiorfaculty,sr.superiorfaculty),
+            sr.ExaminingLogId=if(sr.ExaminingLogId is null,ip.ExaminingLogId,sr.ExaminingLogId),
+            sr.ExpertId=if(sr.ExpertId is null or sr.ExpertId='',ip.ExpertId,sr.ExpertId),
+            sr.zlzz=if(sr.zlzz is null or sr.zlzz='',ip.gh,sr.zlzz),
+            sr.zlh=if(sr.zlh is null or sr.zlh='',ip.zlh,sr.zlh),
+            sr.sqdw=if(sr.sqdw is null or sr.sqdw='',ip.gh,sr.sqdw),
+            sr.sqny=if(sr.sqny is null or sr.sqny='',ip.sqny,sr.sqny),
+            sr.zljsm=if(sr.zljsm is null or sr.zljsm='',ip.zljsm,sr.zljsm),
+            sr.tjbs=if(sr.tjbs is null,ip.tjbs,sr.tjbs),
+            sr.pm=if(sr.pm is null,ip.pm,sr.pm),
+            sr.zllbm=if(sr.zllbm is null or sr.zllbm='',ip.zllbm,sr.zllbm),
+            sr.sqh=if(sr.sqh is null or sr.sqh='',ip.sqh,sr.sqh),
+            sr.sygjm=if(sr.sygjm is null or sr.sygjm='',ip.sygjm,sr.sygjm),
+            sr.gkrq=if(sr.gkrq is null or sr.gkrq='',ip.gkrq,sr.gkrq),
+            sr.sqzt=if(sr.sqzt is null or sr.sqzt='',ip.sqzt,sr.sqzt),
+            sr.shouqrq=if(sr.shouqrq is null or sr.shouqrq='',ip.shouqrq,sr.shouqrq),
+            sr.nation=if(sr.nation is null or sr.nation='',ip.nation,sr.nation),
+            sr.printxh=if(sr.printxh is null,ip.printxh,sr.printxh),
+            sr.filename=if(sr.filename is null or sr.filename='',ip.filename,sr.filename),
+            sr.SJLY=if(sr.SJLY is null or sr.SJLY='',ip.SJLY,sr.SJLY),
+            sr.QrBZ=if(sr.QrBZ is null or sr.QrBZ='',ip.QrBZ,sr.QrBZ),
+            sr.SchoolNo=if(sr.SchoolNo is null or sr.SchoolNo='',ip.SchoolNo,sr.SchoolNo),
+            sr.AgencyNo=if(sr.AgencyNo is null or sr.AgencyNo='',ip.AgencyNo,sr.AgencyNo),
+            sr.Agency=if(sr.Agency is null or sr.Agency='',ip.Agency,sr.Agency),
+            sr.zlmc_EN=if(sr.zlmc_EN is null or sr.zlmc_EN='',ip.zlmc_EN,sr.zlmc_EN),
+            sr.inventor_finisher=if(sr.inventor_finisher is null or sr.inventor_finisher='',ip.inventor_finisher,sr.inventor_finisher),
+            sr.scbj=if(sr.scbj is null or sr.scbj='',ip.scbj,sr.scbj),
+            sr.inventor=if(sr.inventor is null or sr.inventor='',ip.inventor,sr.inventor),
+            sr.claimusername=if(sr.claimusername is null or sr.claimusername='',ip.claimusername,sr.claimusername),
+            sr.sfkhgsr=if(sr.sfkhgsr is null or sr.sfkhgsr='',ip.sfkhgsr,sr.sfkhgsr),
+            sr.year_of_assessment=if(sr.year_of_assessment is null or sr.year_of_assessment='',ip.year_of_assessment,sr.year_of_assessment),
+            sr.is_inserted_by_teacher=if(sr.is_inserted_by_teacher is null or sr.is_inserted_by_teacher='',ip.is_inserted_by_teacher,sr.is_inserted_by_teacher),
+            sr.islock=if(sr.islock is null or sr.islock='',ip.islock,sr.islock),
+            sr.sfjdwdydw=if(sr.sfjdwdydw is null,ip.sfjdwdydw,sr.sfjdwdydw),
+            sr.transfer=if(sr.transfer is null or sr.transfer='',ip.transfer,sr.transfer),
+            sr.user_type=if(sr.user_type is null or sr.user_type='',ip.user_type,sr.user_type)
+        where (sr.qr=77) and (sr.id=ip.sr_id);
+
+
+
+        #### 对目标表sr_patent内qr=99的条目进行全部字段更新，且源头数据工号来源于自带或jaccount匹配    (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if(ifnull(sr.gh,'')<>ifnull(ip.gh,''),concat('工号:', ifnull(sr.gh,''), '-->', ifnull(ip.gh,''), ';'),''),
+		           if(ifnull(sr.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(sr.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if(ifnull(sr.superiorfacultycode,'')<>ifnull(ip.superiorfacultycode,''),concat('单位代码:', ifnull(sr.superiorfacultycode,''), '-->', ifnull(ip.superiorfacultycode,''), ';'),''),
+                   if(ifnull(sr.superiorfaculty,'')<>ifnull(ip.superiorfaculty,''),concat('单位:', ifnull(sr.superiorfaculty,''), '-->', ifnull(ip.superiorfaculty,''), ';'),''),
+		           if(ifnull(sr.zlmc,'')<>ifnull(ip.zlmc,''),concat('专利名称:', ifnull(sr.zlmc,''), '-->', ifnull(ip.zlmc,''), ';'),''),
+		           if(ifnull(sr.zlh,'')<>ifnull(ip.zlh,''),concat('专利号:', ifnull(sr.zlh,''), '-->', ifnull(ip.zlh,''), ';'),''),
+		           if(ifnull(sr.sqdw,'')<>ifnull(ip.sqdw,''),concat('权利人:', ifnull(sr.sqdw,''), '-->', ifnull(ip.sqdw,''), ';'),''),
+		           if(ifnull(sr.sqny,'')<>ifnull(ip.sqny,''),concat('申请年月:', ifnull(sr.sqny,''), '-->', ifnull(ip.sqny,''), ';'),''),
+		           if(ifnull(sr.zljsm,'')<>ifnull(ip.zljsm,''),concat('本人角色:', (case sr.zljsm
+		               when '001' then '专利成果负责人'
+		               when '002' then '专利成果参与人'
+		               else '其他'
+		               end
+		               ), '-->', if(ifnull(ip.zljsm,'')<>'002','专利成果负责人','专利成果参与人'), ';'),''),
+		           if(ifnull(sr.qr,'')<>ifnull(ip.qr,''),concat('状态:', (case sr.superiorfaculty
+		               when '电子信息与电气工程学院' then if(ifnull(sr.qr,'')<>77,'待确认','已确认')
+		               else if(ifnull(sr.qr,'')<>77,'待确认','已通过')
+		               end
+		               ), '-->', (case ip.superiorfaculty
+		               when '电子信息与电气工程学院' then if(ifnull(ip.qr,'')<>77,'待确认','已确认')
+		               else if(ifnull(ip.qr,'')<>77,'待确认','已通过')
+		               end), ';'),''),
+		           if(ifnull(sr.pm,'')<>ifnull(ip.pm,''),concat('排名:', ifnull(sr.pm,''), '-->', ifnull(ip.pm,''), ';'),''),
+		           if(ifnull(sr.zllbm,'')<>ifnull(ip.zllbm,''),concat('专利类别码:', (case ifnull(sr.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), '-->', (case ifnull(ip.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), ';'),''),
+		           if(ifnull(sr.sqh,'')<>ifnull(ip.sqh,''),concat('授权号:', ifnull(sr.sqh,''), '-->', ifnull(ip.sqh,''), ';'),''),
+		           if(ifnull(sr.sqzt,'')<>ifnull(ip.sqzt,''),concat('授权状态:', ifnull(sr.sqzt,''), '-->', ifnull(ip.sqzt,''), ';'),''),
+		           if(ifnull(sr.shouqrq,'')<>ifnull(ip.shouqrq,''),concat('授权日期:', ifnull(sr.shouqrq,''), '-->', ifnull(ip.shouqrq,''), ';'),''),
+		           if(ifnull(sr.nation,'')<>ifnull(ip.nation,''),concat('专利授予国别:', ifnull(sr.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if(ifnull(sr.SJLY,'')<>ifnull(ip.SJLY,''),concat('数据来源:', ifnull(sr.SJLY,''), '-->', ifnull(ip.SJLY,''), ';'),''),
+		           if(ifnull(sr.SchoolNo,'')<>ifnull(ip.SchoolNo,''),concat('学校编号:', ifnull(sr.SchoolNo,''), '-->', ifnull(ip.SchoolNo,''), ';'),''),
+		           if(ifnull(sr.AgencyNo,'')<>ifnull(ip.AgencyNo,''),concat('事务所编号:', ifnull(sr.AgencyNo,''), '-->', ifnull(ip.AgencyNo,''), ';'),''),
+		           if(ifnull(sr.zlmc_EN,'')<>ifnull(ip.zlmc_EN,''),concat('专利名称——英文:', ifnull(sr.zlmc_EN,''), '-->', ifnull(ip.zlmc_EN,''), ';'),''),
+		           if(ifnull(sr.inventor_finisher,'')<>ifnull(ip.inventor_finisher,''),concat('发明人列表:', ifnull(sr.inventor_finisher,''), '-->', ifnull(ip.inventor_finisher,''), ';'),''),
+		           if(ifnull(sr.scbj,'')<>ifnull(ip.scbj,''),concat('删除标记:', if(ifnull(sr.scbj,'')<>'N','已删除','未删除'), '-->', if(ifnull(ip.scbj,'')<>'N','已删除','未删除'), ';'),''),
+		           if(ifnull(sr.is_inserted_by_teacher,'')<>ifnull(ip.is_inserted_by_teacher,''),concat('是否老师新增:', if(ifnull(sr.is_inserted_by_teacher,'')<>'N','是','否'), '-->', if(ifnull(ip.is_inserted_by_teacher,'')<>'N','是','否'), ';'),''),
+		           if(ifnull(sr.islock,'')<>ifnull(ip.islock,''),concat('锁定状态:', if(ifnull(sr.islock,'')<>'1','未锁定','锁定'), '-->', if(ifnull(ip.islock,'')<>'1','未锁定','锁定'), ';'),''),
+		           if((sr.sfjdwdydw is null) and ifnull(sr.sfjdwdydw,'')<>ifnull(ip.sfjdwdydw,''),concat('学校署名:', (case ifnull(sr.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->', (case ifnull(ip.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(sr.patent_application_type,'')<>ifnull(ip.patent_application_type,''),concat('专利申请类型:', ifnull(sr.patent_application_type,''), '-->', ifnull(ip.patent_application_type,''), ';'),''),
+		           if(ifnull(sr.current_status,'')<>ifnull(ip.current_status,''),concat('法律状态:', ifnull(sr.current_status,''), '-->', ifnull(ip.current_status,''), ';'),'')) as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',sr.Ipid,'gh',sr.gh,'xh',sr.xh,'xm',sr.xm,'superiorfacultycode',sr.superiorfacultycode,'superiorfaculty',sr.superiorfaculty,'ExaminingLogId',sr.ExaminingLogId,'ExpertId',sr.ExpertId,'zlmc',sr.zlmc,'zlzz',sr.zlzz,'zlh',sr.zlh,'sqdw',sr.sqdw,'sqny',sr.sqny,'zljsm',sr.zljsm,'qr',sr.qr,'tjbs',sr.tjbs,'pm',sr.pm,'zllbm',sr.zllbm,'patent_application_type',sr.patent_application_type,'sqh',sr.sqh,'sygjm',sr.sygjm,'gkrq',sr.gkrq,'sqzt',sr.sqzt,'shouqrq',sr.shouqrq,'nation',sr.nation,'printxh',sr.printxh,'filename',sr.filename,'SJLY',sr.SJLY,'QrBZ',sr.QrBZ,'SchoolNo',sr.SchoolNo,'AgencyNo',sr.AgencyNo,'Agency',sr.Agency,'zlmc_EN',sr.zlmc_EN,'inventor_finisher',sr.inventor_finisher,'create_timestamp',sr.create_timestamp,'update_timestamp',sr.update_timestamp,'scbj',sr.scbj,'inventor',sr.inventor,'claimusername',sr.claimusername,'sfkhgsr',sr.sfkhgsr,'bz',sr.bz,'year_of_assessment',sr.year_of_assessment,'is_inserted_by_teacher',sr.is_inserted_by_teacher,'islock',sr.islock,'sfjdwdydw',sr.sfjdwdydw,'transfer',sr.transfer,'situation',sr.situation,'user_type',sr.user_type,'current_status',sr.current_status) as datapre,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','77','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=99) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='Y');
+
+		insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','77','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=99) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='N');
+
+        update sams_factdata.sr_patent as sr, (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        set sr.Ipid=ip.Ipid,
+          sr.gh=ip.gh,
+          sr.xh=ip.xh,
+          sr.xm=ip.xm,
+          sr.superiorfacultycode=ip.superiorfacultycode,
+          sr.superiorfaculty=ip.superiorfaculty,
+          sr.ExaminingLogId=ip.ExaminingLogId,
+          sr.ExpertId=ip.ExpertId,
+          sr.zlmc=ip.zlmc,
+          sr.zlzz=ip.zlzz,
+          sr.zlh=ip.zlh,
+          sr.sqdw=ip.sqdw,
+          sr.sqny=ip.sqny,
+          sr.zljsm=ip.zljsm,
+          sr.qr=77,
+          sr.tjbs=ip.tjbs,
+          sr.pm=ip.pm,
+          sr.zllbm=ip.zllbm,
+          sr.sqh=ip.sqh,
+          sr.sygjm=ip.sygjm,
+          sr.gkrq=ip.gkrq,
+          sr.sqzt=ip.sqzt,
+          sr.shouqrq=ip.shouqrq,
+          sr.nation=ip.nation,
+          sr.printxh=ip.printxh,
+          sr.filename=ip.filename,
+          sr.SJLY=ip.SJLY,
+          sr.QrBZ=ip.QrBZ,
+          sr.SchoolNo=ip.SchoolNo,
+          sr.AgencyNo=ip.AgencyNo,
+          sr.Agency=ip.Agency,
+          sr.zlmc_EN=ip.zlmc_EN,
+          sr.inventor_finisher=ip.inventor_finisher,
+          sr.scbj=ip.scbj,
+          sr.inventor=ip.inventor,
+          sr.claimusername=ip.claimusername,
+          sr.sfkhgsr=ip.sfkhgsr,
+          sr.year_of_assessment=ip.year_of_assessment,
+          sr.is_inserted_by_teacher=ip.is_inserted_by_teacher,
+          sr.islock=ip.islock,
+          sr.sfjdwdydw=ip.sfjdwdydw,
+          sr.transfer=ip.transfer,
+          sr.user_type=ip.user_type,
+          sr.patent_application_type=ip.patent_application_type,
+          sr.current_status=ip.current_status
+        where (sr.qr=99) and (sr.id=ip.sr_id);
+
+        #### 对目标表sr_patent内qr=-1的条目进行全部字段更新，但qr仍为-1，且源头数据工号来源于自带或jaccount匹配    (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if(ifnull(sr.gh,'')<>ifnull(ip.gh,''),concat('工号:', ifnull(sr.gh,''), '-->', ifnull(ip.gh,''), ';'),''),
+		           if(ifnull(sr.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(sr.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if(ifnull(sr.superiorfacultycode,'')<>ifnull(ip.superiorfacultycode,''),concat('单位代码:', ifnull(sr.superiorfacultycode,''), '-->', ifnull(ip.superiorfacultycode,''), ';'),''),
+                   if(ifnull(sr.superiorfaculty,'')<>ifnull(ip.superiorfaculty,''),concat('单位:', ifnull(sr.superiorfaculty,''), '-->', ifnull(ip.superiorfaculty,''), ';'),''),
+		           if(ifnull(sr.zlmc,'')<>ifnull(ip.zlmc,''),concat('专利名称:', ifnull(sr.zlmc,''), '-->', ifnull(ip.zlmc,''), ';'),''),
+		           if(ifnull(sr.zlh,'')<>ifnull(ip.zlh,''),concat('专利号:', ifnull(sr.zlh,''), '-->', ifnull(ip.zlh,''), ';'),''),
+		           if(ifnull(sr.sqdw,'')<>ifnull(ip.sqdw,''),concat('权利人:', ifnull(sr.sqdw,''), '-->', ifnull(ip.sqdw,''), ';'),''),
+		           if(ifnull(sr.sqny,'')<>ifnull(ip.sqny,''),concat('申请年月:', ifnull(sr.sqny,''), '-->', ifnull(ip.sqny,''), ';'),''),
+		           if(ifnull(sr.zljsm,'')<>ifnull(ip.zljsm,''),concat('本人角色:', (case sr.zljsm
+		               when '001' then '专利成果负责人'
+		               when '002' then '专利成果参与人'
+		               else '其他'
+		               end
+		               ), '-->', if(ifnull(ip.zljsm,'')<>'002','专利成果负责人','专利成果参与人'), ';'),''),
+		           if(ifnull(sr.pm,'')<>ifnull(ip.pm,''),concat('排名:', ifnull(sr.pm,''), '-->', ifnull(ip.pm,''), ';'),''),
+		           if(ifnull(sr.zllbm,'')<>ifnull(ip.zllbm,''),concat('专利类别码:', (case ifnull(sr.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), '-->', (case ifnull(ip.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), ';'),''),
+		           if(ifnull(sr.sqh,'')<>ifnull(ip.sqh,''),concat('授权号:', ifnull(sr.sqh,''), '-->', ifnull(ip.sqh,''), ';'),''),
+		           if(ifnull(sr.sqzt,'')<>ifnull(ip.sqzt,''),concat('授权状态:', ifnull(sr.sqzt,''), '-->', ifnull(ip.sqzt,''), ';'),''),
+		           if(ifnull(sr.shouqrq,'')<>ifnull(ip.shouqrq,''),concat('授权日期:', ifnull(sr.shouqrq,''), '-->', ifnull(ip.shouqrq,''), ';'),''),
+		           if(ifnull(sr.nation,'')<>ifnull(ip.nation,''),concat('专利授予国别:', ifnull(sr.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if(ifnull(sr.SJLY,'')<>ifnull(ip.SJLY,''),concat('数据来源:', ifnull(sr.SJLY,''), '-->', ifnull(ip.SJLY,''), ';'),''),
+		           if(ifnull(sr.SchoolNo,'')<>ifnull(ip.SchoolNo,''),concat('学校编号:', ifnull(sr.SchoolNo,''), '-->', ifnull(ip.SchoolNo,''), ';'),''),
+		           if(ifnull(sr.AgencyNo,'')<>ifnull(ip.AgencyNo,''),concat('事务所编号:', ifnull(sr.AgencyNo,''), '-->', ifnull(ip.AgencyNo,''), ';'),''),
+		           if(ifnull(sr.zlmc_EN,'')<>ifnull(ip.zlmc_EN,''),concat('专利名称——英文:', ifnull(sr.zlmc_EN,''), '-->', ifnull(ip.zlmc_EN,''), ';'),''),
+		           if(ifnull(sr.inventor_finisher,'')<>ifnull(ip.inventor_finisher,''),concat('发明人列表:', ifnull(sr.inventor_finisher,''), '-->', ifnull(ip.inventor_finisher,''), ';'),''),
+		           if(ifnull(sr.scbj,'')<>ifnull(ip.scbj,''),concat('删除标记:', if(ifnull(sr.scbj,'')<>'N','已删除','未删除'), '-->', if(ifnull(ip.scbj,'')<>'N','已删除','未删除'), ';'),''),
+		           if(ifnull(sr.is_inserted_by_teacher,'')<>ifnull(ip.is_inserted_by_teacher,''),concat('是否老师新增:', if(ifnull(sr.is_inserted_by_teacher,'')<>'N','是','否'), '-->', if(ifnull(ip.is_inserted_by_teacher,'')<>'N','是','否'), ';'),''),
+		           if(ifnull(sr.islock,'')<>ifnull(ip.islock,''),concat('锁定状态:', if(ifnull(sr.islock,'')<>'1','未锁定','锁定'), '-->', if(ifnull(ip.islock,'')<>'1','未锁定','锁定'), ';'),''),
+		           if((sr.sfjdwdydw is null) and ifnull(sr.sfjdwdydw,'')<>ifnull(ip.sfjdwdydw,''),concat('学校署名:', (case ifnull(sr.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->', (case ifnull(ip.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(sr.patent_application_type,'')<>ifnull(ip.patent_application_type,''),concat('专利申请类型:', ifnull(sr.patent_application_type,''), '-->', ifnull(ip.patent_application_type,''), ';'),''),
+		           if(ifnull(sr.current_status,'')<>ifnull(ip.current_status,''),concat('法律状态:', ifnull(sr.current_status,''), '-->', ifnull(ip.current_status,''), ';'),'')) as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',sr.Ipid,'gh',sr.gh,'xh',sr.xh,'xm',sr.xm,'superiorfacultycode',sr.superiorfacultycode,'superiorfaculty',sr.superiorfaculty,'ExaminingLogId',sr.ExaminingLogId,'ExpertId',sr.ExpertId,'zlmc',sr.zlmc,'zlzz',sr.zlzz,'zlh',sr.zlh,'sqdw',sr.sqdw,'sqny',sr.sqny,'zljsm',sr.zljsm,'qr',sr.qr,'tjbs',sr.tjbs,'pm',sr.pm,'zllbm',sr.zllbm,'patent_application_type',sr.patent_application_type,'sqh',sr.sqh,'sygjm',sr.sygjm,'gkrq',sr.gkrq,'sqzt',sr.sqzt,'shouqrq',sr.shouqrq,'nation',sr.nation,'printxh',sr.printxh,'filename',sr.filename,'SJLY',sr.SJLY,'QrBZ',sr.QrBZ,'SchoolNo',sr.SchoolNo,'AgencyNo',sr.AgencyNo,'Agency',sr.Agency,'zlmc_EN',sr.zlmc_EN,'inventor_finisher',sr.inventor_finisher,'create_timestamp',sr.create_timestamp,'update_timestamp',sr.update_timestamp,'scbj',sr.scbj,'inventor',sr.inventor,'claimusername',sr.claimusername,'sfkhgsr',sr.sfkhgsr,'bz',sr.bz,'year_of_assessment',sr.year_of_assessment,'is_inserted_by_teacher',sr.is_inserted_by_teacher,'islock',sr.islock,'sfjdwdydw',sr.sfjdwdydw,'transfer',sr.transfer,'situation',sr.situation,'user_type',sr.user_type,'current_status',sr.current_status) as datapre,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','-1','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=-1) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='Y');
+
+		insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','77','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=-1) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='N');
+
+        update sams_factdata.sr_patent as sr, (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher <> 0)) as ip
+        set sr.Ipid=ip.Ipid,
+          sr.gh=ip.gh,
+          sr.xh=ip.xh,
+          sr.xm=ip.xm,
+          sr.superiorfacultycode=ip.superiorfacultycode,
+          sr.superiorfaculty=ip.superiorfaculty,
+          sr.ExaminingLogId=ip.ExaminingLogId,
+          sr.ExpertId=ip.ExpertId,
+          sr.zlmc=ip.zlmc,
+          sr.zlzz=ip.zlzz,
+          sr.zlh=ip.zlh,
+          sr.sqdw=ip.sqdw,
+          sr.sqny=ip.sqny,
+          sr.zljsm=ip.zljsm,
+          sr.qr=-1,
+          sr.tjbs=ip.tjbs,
+          sr.pm=ip.pm,
+          sr.zllbm=ip.zllbm,
+          sr.sqh=ip.sqh,
+          sr.sygjm=ip.sygjm,
+          sr.gkrq=ip.gkrq,
+          sr.sqzt=ip.sqzt,
+          sr.shouqrq=ip.shouqrq,
+          sr.nation=ip.nation,
+          sr.printxh=ip.printxh,
+          sr.filename=ip.filename,
+          sr.SJLY=ip.SJLY,
+          sr.QrBZ=ip.QrBZ,
+          sr.SchoolNo=ip.SchoolNo,
+          sr.AgencyNo=ip.AgencyNo,
+          sr.Agency=ip.Agency,
+          sr.zlmc_EN=ip.zlmc_EN,
+          sr.inventor_finisher=ip.inventor_finisher,
+          sr.scbj=ip.scbj,
+          sr.inventor=ip.inventor,
+          sr.claimusername=ip.claimusername,
+          sr.sfkhgsr=ip.sfkhgsr,
+          sr.year_of_assessment=ip.year_of_assessment,
+          sr.is_inserted_by_teacher=ip.is_inserted_by_teacher,
+          sr.islock=ip.islock,
+          sr.sfjdwdydw=ip.sfjdwdydw,
+          sr.transfer=ip.transfer,
+          sr.user_type=ip.user_type,
+          sr.patent_application_type=ip.patent_application_type,
+          sr.current_status=ip.current_status
+        where (sr.qr=-1) and (sr.id=ip.sr_id);
+
+        #### 对目标表sr_patent内qr=99的条目进行全部字段更新，但qr仍为99，且源头数据工号来源于姓名+学院匹配    (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if(ifnull(sr.gh,'')<>ifnull(ip.gh,''),concat('工号:', ifnull(sr.gh,''), '-->', ifnull(ip.gh,''), ';'),''),
+		           if(ifnull(sr.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(sr.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if(ifnull(sr.superiorfacultycode,'')<>ifnull(ip.superiorfacultycode,''),concat('单位代码:', ifnull(sr.superiorfacultycode,''), '-->', ifnull(ip.superiorfacultycode,''), ';'),''),
+                   if(ifnull(sr.superiorfaculty,'')<>ifnull(ip.superiorfaculty,''),concat('单位:', ifnull(sr.superiorfaculty,''), '-->', ifnull(ip.superiorfaculty,''), ';'),''),
+		           if(ifnull(sr.zlmc,'')<>ifnull(ip.zlmc,''),concat('专利名称:', ifnull(sr.zlmc,''), '-->', ifnull(ip.zlmc,''), ';'),''),
+		           if(ifnull(sr.zlh,'')<>ifnull(ip.zlh,''),concat('专利号:', ifnull(sr.zlh,''), '-->', ifnull(ip.zlh,''), ';'),''),
+		           if(ifnull(sr.sqdw,'')<>ifnull(ip.sqdw,''),concat('权利人:', ifnull(sr.sqdw,''), '-->', ifnull(ip.sqdw,''), ';'),''),
+		           if(ifnull(sr.sqny,'')<>ifnull(ip.sqny,''),concat('申请年月:', ifnull(sr.sqny,''), '-->', ifnull(ip.sqny,''), ';'),''),
+		           if(ifnull(sr.zljsm,'')<>ifnull(ip.zljsm,''),concat('本人角色:', (case sr.zljsm
+		               when '001' then '专利成果负责人'
+		               when '002' then '专利成果参与人'
+		               else '其他'
+		               end
+		               ), '-->', if(ifnull(ip.zljsm,'')<>'002','专利成果负责人','专利成果参与人'), ';'),''),
+		           if(ifnull(sr.pm,'')<>ifnull(ip.pm,''),concat('排名:', ifnull(sr.pm,''), '-->', ifnull(ip.pm,''), ';'),''),
+		           if(ifnull(sr.zllbm,'')<>ifnull(ip.zllbm,''),concat('专利类别码:', (case ifnull(sr.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), '-->', (case ifnull(ip.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), ';'),''),
+		           if(ifnull(sr.sqh,'')<>ifnull(ip.sqh,''),concat('授权号:', ifnull(sr.sqh,''), '-->', ifnull(ip.sqh,''), ';'),''),
+		           if(ifnull(sr.sqzt,'')<>ifnull(ip.sqzt,''),concat('授权状态:', ifnull(sr.sqzt,''), '-->', ifnull(ip.sqzt,''), ';'),''),
+		           if(ifnull(sr.shouqrq,'')<>ifnull(ip.shouqrq,''),concat('授权日期:', ifnull(sr.shouqrq,''), '-->', ifnull(ip.shouqrq,''), ';'),''),
+		           if(ifnull(sr.nation,'')<>ifnull(ip.nation,''),concat('专利授予国别:', ifnull(sr.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if(ifnull(sr.SJLY,'')<>ifnull(ip.SJLY,''),concat('数据来源:', ifnull(sr.SJLY,''), '-->', ifnull(ip.SJLY,''), ';'),''),
+		           if(ifnull(sr.SchoolNo,'')<>ifnull(ip.SchoolNo,''),concat('学校编号:', ifnull(sr.SchoolNo,''), '-->', ifnull(ip.SchoolNo,''), ';'),''),
+		           if(ifnull(sr.AgencyNo,'')<>ifnull(ip.AgencyNo,''),concat('事务所编号:', ifnull(sr.AgencyNo,''), '-->', ifnull(ip.AgencyNo,''), ';'),''),
+		           if(ifnull(sr.zlmc_EN,'')<>ifnull(ip.zlmc_EN,''),concat('专利名称——英文:', ifnull(sr.zlmc_EN,''), '-->', ifnull(ip.zlmc_EN,''), ';'),''),
+		           if(ifnull(sr.inventor_finisher,'')<>ifnull(ip.inventor_finisher,''),concat('发明人列表:', ifnull(sr.inventor_finisher,''), '-->', ifnull(ip.inventor_finisher,''), ';'),''),
+		           if(ifnull(sr.scbj,'')<>ifnull(ip.scbj,''),concat('删除标记:', if(ifnull(sr.scbj,'')<>'N','已删除','未删除'), '-->', if(ifnull(ip.scbj,'')<>'N','已删除','未删除'), ';'),''),
+		           if(ifnull(sr.is_inserted_by_teacher,'')<>ifnull(ip.is_inserted_by_teacher,''),concat('是否老师新增:', if(ifnull(sr.is_inserted_by_teacher,'')<>'N','是','否'), '-->', if(ifnull(ip.is_inserted_by_teacher,'')<>'N','是','否'), ';'),''),
+		           if(ifnull(sr.islock,'')<>ifnull(ip.islock,''),concat('锁定状态:', if(ifnull(sr.islock,'')<>'1','未锁定','锁定'), '-->', if(ifnull(ip.islock,'')<>'1','未锁定','锁定'), ';'),''),
+		           if((sr.sfjdwdydw is null) and ifnull(sr.sfjdwdydw,'')<>ifnull(ip.sfjdwdydw,''),concat('学校署名:', (case ifnull(sr.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->', (case ifnull(ip.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(sr.patent_application_type,'')<>ifnull(ip.patent_application_type,''),concat('专利申请类型:', ifnull(sr.patent_application_type,''), '-->', ifnull(ip.patent_application_type,''), ';'),''),
+		           if(ifnull(sr.current_status,'')<>ifnull(ip.current_status,''),concat('法律状态:', ifnull(sr.current_status,''), '-->', ifnull(ip.current_status,''), ';'),'')) as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',sr.Ipid,'gh',sr.gh,'xh',sr.xh,'xm',sr.xm,'superiorfacultycode',sr.superiorfacultycode,'superiorfaculty',sr.superiorfaculty,'ExaminingLogId',sr.ExaminingLogId,'ExpertId',sr.ExpertId,'zlmc',sr.zlmc,'zlzz',sr.zlzz,'zlh',sr.zlh,'sqdw',sr.sqdw,'sqny',sr.sqny,'zljsm',sr.zljsm,'qr',sr.qr,'tjbs',sr.tjbs,'pm',sr.pm,'zllbm',sr.zllbm,'patent_application_type',sr.patent_application_type,'sqh',sr.sqh,'sygjm',sr.sygjm,'gkrq',sr.gkrq,'sqzt',sr.sqzt,'shouqrq',sr.shouqrq,'nation',sr.nation,'printxh',sr.printxh,'filename',sr.filename,'SJLY',sr.SJLY,'QrBZ',sr.QrBZ,'SchoolNo',sr.SchoolNo,'AgencyNo',sr.AgencyNo,'Agency',sr.Agency,'zlmc_EN',sr.zlmc_EN,'inventor_finisher',sr.inventor_finisher,'create_timestamp',sr.create_timestamp,'update_timestamp',sr.update_timestamp,'scbj',sr.scbj,'inventor',sr.inventor,'claimusername',sr.claimusername,'sfkhgsr',sr.sfkhgsr,'bz',sr.bz,'year_of_assessment',sr.year_of_assessment,'is_inserted_by_teacher',sr.is_inserted_by_teacher,'islock',sr.islock,'sfjdwdydw',sr.sfjdwdydw,'transfer',sr.transfer,'situation',sr.situation,'user_type',sr.user_type,'current_status',sr.current_status) as datapre,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','99','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=99) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='Y');
+
+		insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','77','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=99) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='N');
+
+        update sams_factdata.sr_patent as sr, (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        set sr.Ipid=ip.Ipid,
+          sr.gh=ip.gh,
+          sr.xh=ip.xh,
+          sr.xm=ip.xm,
+          sr.superiorfacultycode=ip.superiorfacultycode,
+          sr.superiorfaculty=ip.superiorfaculty,
+          sr.ExaminingLogId=ip.ExaminingLogId,
+          sr.ExpertId=ip.ExpertId,
+          sr.zlmc=ip.zlmc,
+          sr.zlzz=ip.zlzz,
+          sr.zlh=ip.zlh,
+          sr.sqdw=ip.sqdw,
+          sr.sqny=ip.sqny,
+          sr.zljsm=ip.zljsm,
+          sr.qr=99,
+          sr.tjbs=ip.tjbs,
+          sr.pm=ip.pm,
+          sr.zllbm=ip.zllbm,
+          sr.sqh=ip.sqh,
+          sr.sygjm=ip.sygjm,
+          sr.gkrq=ip.gkrq,
+          sr.sqzt=ip.sqzt,
+          sr.shouqrq=ip.shouqrq,
+          sr.nation=ip.nation,
+          sr.printxh=ip.printxh,
+          sr.filename=ip.filename,
+          sr.SJLY=ip.SJLY,
+          sr.QrBZ=ip.QrBZ,
+          sr.SchoolNo=ip.SchoolNo,
+          sr.AgencyNo=ip.AgencyNo,
+          sr.Agency=ip.Agency,
+          sr.zlmc_EN=ip.zlmc_EN,
+          sr.inventor_finisher=ip.inventor_finisher,
+          sr.update_timestamp=ip.update_timestamp,
+          sr.scbj=ip.scbj,
+          sr.inventor=ip.inventor,
+          sr.claimusername=ip.claimusername,
+          sr.sfkhgsr=ip.sfkhgsr,
+          sr.year_of_assessment=ip.year_of_assessment,
+          sr.is_inserted_by_teacher=ip.is_inserted_by_teacher,
+          sr.islock=ip.islock,
+          sr.sfjdwdydw=ip.sfjdwdydw,
+          sr.transfer=ip.transfer,
+          sr.user_type=ip.user_type,
+          sr.patent_application_type=ip.patent_application_type,
+          sr.current_status=ip.current_status
+        where (sr.qr=99) and (sr.id=ip.sr_id);
+
+        #### 对目标表sr_patent内qr=-1的条目进行全部字段更新，但qr仍为-1，但qr仍为-1，且源头数据工号来源于姓名+学院匹配    (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if(ifnull(sr.gh,'')<>ifnull(ip.gh,''),concat('工号:', ifnull(sr.gh,''), '-->', ifnull(ip.gh,''), ';'),''),
+		           if(ifnull(sr.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(sr.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if(ifnull(sr.superiorfacultycode,'')<>ifnull(ip.superiorfacultycode,''),concat('单位代码:', ifnull(sr.superiorfacultycode,''), '-->', ifnull(ip.superiorfacultycode,''), ';'),''),
+                   if(ifnull(sr.superiorfaculty,'')<>ifnull(ip.superiorfaculty,''),concat('单位:', ifnull(sr.superiorfaculty,''), '-->', ifnull(ip.superiorfaculty,''), ';'),''),
+		           if(ifnull(sr.zlmc,'')<>ifnull(ip.zlmc,''),concat('专利名称:', ifnull(sr.zlmc,''), '-->', ifnull(ip.zlmc,''), ';'),''),
+		           if(ifnull(sr.zlh,'')<>ifnull(ip.zlh,''),concat('专利号:', ifnull(sr.zlh,''), '-->', ifnull(ip.zlh,''), ';'),''),
+		           if(ifnull(sr.sqdw,'')<>ifnull(ip.sqdw,''),concat('权利人:', ifnull(sr.sqdw,''), '-->', ifnull(ip.sqdw,''), ';'),''),
+		           if(ifnull(sr.sqny,'')<>ifnull(ip.sqny,''),concat('申请年月:', ifnull(sr.sqny,''), '-->', ifnull(ip.sqny,''), ';'),''),
+		           if(ifnull(sr.zljsm,'')<>ifnull(ip.zljsm,''),concat('本人角色:', (case sr.zljsm
+		               when '001' then '专利成果负责人'
+		               when '002' then '专利成果参与人'
+		               else '其他'
+		               end
+		               ), '-->', if(ifnull(ip.zljsm,'')<>'002','专利成果负责人','专利成果参与人'), ';'),''),
+		           if(ifnull(sr.pm,'')<>ifnull(ip.pm,''),concat('排名:', ifnull(sr.pm,''), '-->', ifnull(ip.pm,''), ';'),''),
+		           if(ifnull(sr.zllbm,'')<>ifnull(ip.zllbm,''),concat('专利类别码:', (case ifnull(sr.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), '-->', (case ifnull(ip.zllbm,'')
+		               when '1' then '发明'
+		               when '2' then '实用新型'
+		               else '外观设计'
+		               end), ';'),''),
+		           if(ifnull(sr.sqh,'')<>ifnull(ip.sqh,''),concat('授权号:', ifnull(sr.sqh,''), '-->', ifnull(ip.sqh,''), ';'),''),
+		           if(ifnull(sr.sqzt,'')<>ifnull(ip.sqzt,''),concat('授权状态:', ifnull(sr.sqzt,''), '-->', ifnull(ip.sqzt,''), ';'),''),
+		           if(ifnull(sr.shouqrq,'')<>ifnull(ip.shouqrq,''),concat('授权日期:', ifnull(sr.shouqrq,''), '-->', ifnull(ip.shouqrq,''), ';'),''),
+		           if(ifnull(sr.nation,'')<>ifnull(ip.nation,''),concat('专利授予国别:', ifnull(sr.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if(ifnull(sr.SJLY,'')<>ifnull(ip.SJLY,''),concat('数据来源:', ifnull(sr.SJLY,''), '-->', ifnull(ip.SJLY,''), ';'),''),
+		           if(ifnull(sr.SchoolNo,'')<>ifnull(ip.SchoolNo,''),concat('学校编号:', ifnull(sr.SchoolNo,''), '-->', ifnull(ip.SchoolNo,''), ';'),''),
+		           if(ifnull(sr.AgencyNo,'')<>ifnull(ip.AgencyNo,''),concat('事务所编号:', ifnull(sr.AgencyNo,''), '-->', ifnull(ip.AgencyNo,''), ';'),''),
+		           if(ifnull(sr.zlmc_EN,'')<>ifnull(ip.zlmc_EN,''),concat('专利名称——英文:', ifnull(sr.zlmc_EN,''), '-->', ifnull(ip.zlmc_EN,''), ';'),''),
+		           if(ifnull(sr.inventor_finisher,'')<>ifnull(ip.inventor_finisher,''),concat('发明人列表:', ifnull(sr.inventor_finisher,''), '-->', ifnull(ip.inventor_finisher,''), ';'),''),
+		           if(ifnull(sr.scbj,'')<>ifnull(ip.scbj,''),concat('删除标记:', if(ifnull(sr.scbj,'')<>'N','已删除','未删除'), '-->', if(ifnull(ip.scbj,'')<>'N','已删除','未删除'), ';'),''),
+		           if(ifnull(sr.is_inserted_by_teacher,'')<>ifnull(ip.is_inserted_by_teacher,''),concat('是否老师新增:', if(ifnull(sr.is_inserted_by_teacher,'')<>'N','是','否'), '-->', if(ifnull(ip.is_inserted_by_teacher,'')<>'N','是','否'), ';'),''),
+		           if(ifnull(sr.islock,'')<>ifnull(ip.islock,''),concat('锁定状态:', if(ifnull(sr.islock,'')<>'1','未锁定','锁定'), '-->', if(ifnull(ip.islock,'')<>'1','未锁定','锁定'), ';'),''),
+		           if((sr.sfjdwdydw is null) and ifnull(sr.sfjdwdydw,'')<>ifnull(ip.sfjdwdydw,''),concat('学校署名:', (case ifnull(sr.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->', (case ifnull(ip.sfjdwdydw,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(sr.patent_application_type,'')<>ifnull(ip.patent_application_type,''),concat('专利申请类型:', ifnull(sr.patent_application_type,''), '-->', ifnull(ip.patent_application_type,''), ';'),''),
+		           if(ifnull(sr.current_status,'')<>ifnull(ip.current_status,''),concat('法律状态:', ifnull(sr.current_status,''), '-->', ifnull(ip.current_status,''), ';'),'')) as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',sr.Ipid,'gh',sr.gh,'xh',sr.xh,'xm',sr.xm,'superiorfacultycode',sr.superiorfacultycode,'superiorfaculty',sr.superiorfaculty,'ExaminingLogId',sr.ExaminingLogId,'ExpertId',sr.ExpertId,'zlmc',sr.zlmc,'zlzz',sr.zlzz,'zlh',sr.zlh,'sqdw',sr.sqdw,'sqny',sr.sqny,'zljsm',sr.zljsm,'qr',sr.qr,'tjbs',sr.tjbs,'pm',sr.pm,'zllbm',sr.zllbm,'patent_application_type',sr.patent_application_type,'sqh',sr.sqh,'sygjm',sr.sygjm,'gkrq',sr.gkrq,'sqzt',sr.sqzt,'shouqrq',sr.shouqrq,'nation',sr.nation,'printxh',sr.printxh,'filename',sr.filename,'SJLY',sr.SJLY,'QrBZ',sr.QrBZ,'SchoolNo',sr.SchoolNo,'AgencyNo',sr.AgencyNo,'Agency',sr.Agency,'zlmc_EN',sr.zlmc_EN,'inventor_finisher',sr.inventor_finisher,'create_timestamp',sr.create_timestamp,'update_timestamp',sr.update_timestamp,'scbj',sr.scbj,'inventor',sr.inventor,'claimusername',sr.claimusername,'sfkhgsr',sr.sfkhgsr,'bz',sr.bz,'year_of_assessment',sr.year_of_assessment,'is_inserted_by_teacher',sr.is_inserted_by_teacher,'islock',sr.islock,'sfjdwdydw',sr.sfjdwdydw,'transfer',sr.transfer,'situation',sr.situation,'user_type',sr.user_type,'current_status',sr.current_status) as datapre,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','-1','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=-1) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='Y');
+
+		insert into sams.sys_datalog (id, datakeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       sr.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_OBJECT('id',sr.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','77','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.sr_patent as sr
+        inner join (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on (p.id=v.ip_id) and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        on sr.id = ip.sr_id
+        where (sr.qr=-1) and (sr.id=ip.sr_id) and (sr.is_inserted_by_teacher='N');
+
+        update sams_factdata.sr_patent as sr, (select *
+            from data_test.ip_temp_table p
+            inner join data_test.cxr_dr_gx v
+            on p.id=v.ip_id and (v.flag<>0) and (v.sr_scbj<>'Y') and (p.gh_inserted_by_teacher=0)) as ip
+        set sr.Ipid=ip.Ipid,
+          sr.gh=ip.gh,
+          sr.xh=ip.xh,
+          sr.xm=ip.xm,
+          sr.superiorfacultycode=ip.superiorfacultycode,
+          sr.superiorfaculty=ip.superiorfaculty,
+          sr.ExaminingLogId=ip.ExaminingLogId,
+          sr.ExpertId=ip.ExpertId,
+          sr.zlmc=ip.zlmc,
+          sr.zlzz=ip.zlzz,
+          sr.zlh=ip.zlh,
+          sr.sqdw=ip.sqdw,
+          sr.sqny=ip.sqny,
+          sr.zljsm=ip.zljsm,
+          sr.qr=-1,
+          sr.tjbs=ip.tjbs,
+          sr.pm=ip.pm,
+          sr.zllbm=ip.zllbm,
+          sr.sqh=ip.sqh,
+          sr.sygjm=ip.sygjm,
+          sr.gkrq=ip.gkrq,
+          sr.sqzt=ip.sqzt,
+          sr.shouqrq=ip.shouqrq,
+          sr.nation=ip.nation,
+          sr.printxh=ip.printxh,
+          sr.filename=ip.filename,
+          sr.SJLY=ip.SJLY,
+          sr.QrBZ=ip.QrBZ,
+          sr.SchoolNo=ip.SchoolNo,
+          sr.AgencyNo=ip.AgencyNo,
+          sr.Agency=ip.Agency,
+          sr.zlmc_EN=ip.zlmc_EN,
+          sr.inventor_finisher=ip.inventor_finisher,
+          sr.update_timestamp=ip.update_timestamp,
+          sr.scbj=ip.scbj,
+          sr.inventor=ip.inventor,
+          sr.claimusername=ip.claimusername,
+          sr.sfkhgsr=ip.sfkhgsr,
+          sr.year_of_assessment=ip.year_of_assessment,
+          sr.is_inserted_by_teacher=ip.is_inserted_by_teacher,
+          sr.islock=ip.islock,
+          sr.sfjdwdydw=ip.sfjdwdydw,
+          sr.transfer=ip.transfer,
+          sr.user_type=ip.user_type,
+          sr.patent_application_type=ip.patent_application_type,
+          sr.current_status=ip.current_status
+        where (sr.qr=-1) and (sr.id=ip.sr_id);
+
+        #### 将在目标表sr_patent内匹配未成功的条目全部导入到目标表中，qr有两种:77(对应源头数据工号来源于自带或jaccount匹配)，99(对应源头数据工号来源于姓名+学院匹配)     (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid, logtype, datatype,name,updatecontent, datapost, createdate)
+		select uuid(),
+		       ip.id,
+		       '同步' as logtype,
+		       '专利' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_OBJECT('id',ip.id,'Ipid',ip.Ipid,'gh',ip.gh,'xh',ip.xh,'xm',ip.xm,'superiorfacultycode',ip.superiorfacultycode,'superiorfaculty',ip.superiorfaculty,'ExaminingLogId',ip.ExaminingLogId,'ExpertId',ip.ExpertId,'zlmc',ip.zlmc,'zlzz',ip.zlzz,'zlh',ip.zlh,'sqdw',ip.sqdw,'sqny',ip.sqny,'zljsm',ip.zljsm,'qr','99','tjbs',ip.tjbs,'pm',ip.pm,'zllbm',ip.zllbm,'patent_application_type',ip.patent_application_type,'sqh',ip.sqh,'sygjm',ip.sygjm,'gkrq',ip.gkrq,'sqzt',ip.sqzt,'shouqrq',ip.shouqrq,'nation',ip.nation,'printxh',ip.printxh,'filename',ip.filename,'SJLY',ip.SJLY,'QrBZ',ip.QrBZ,'SchoolNo',ip.SchoolNo,'AgencyNo',ip.AgencyNo,'Agency',ip.Agency,'zlmc_EN',ip.zlmc_EN,'inventor_finisher',ip.inventor_finisher,'create_timestamp',ip.create_timestamp,'update_timestamp',ip.update_timestamp,'scbj',ip.scbj,'inventor',ip.inventor,'claimusername',ip.claimusername,'sfkhgsr',ip.sfkhgsr,'bz',ip.bz,'year_of_assessment',ip.year_of_assessment,'is_inserted_by_teacher',ip.is_inserted_by_teacher,'islock',ip.islock,'sfjdwdydw',ip.sfjdwdydw,'transfer',ip.transfer,'situation',ip.situation,'user_type',ip.user_type,'current_status',ip.current_status) as datapost,
+		       current_timestamp as createdate
+		from (select *
+        from data_test.ip_temp_table p
+        inner join data_test.cxr_dr_gx v
+        on p.id=v.ip_id) as ip
+        where (ip.flag=0);
+
+        insert into sams_factdata.sr_patent (id, Ipid, gh, xh, xm, superiorfacultycode, superiorfaculty, ExaminingLogId, ExpertId, zlmc, zlzz, zlh, sqdw, sqny, zljsm, qr, tjbs, pm, zllbm, patent_application_type, sqh, sygjm, gkrq, sqzt, shouqrq, nation, printxh, filename, SJLY, QrBZ, SchoolNo, AgencyNo, Agency, zlmc_EN, inventor_finisher, scbj, inventor, claimusername, sfkhgsr, bz, year_of_assessment, is_inserted_by_teacher, islock, sfjdwdydw, transfer, user_type, current_status)
+        select id, Ipid, gh, xh, xm, superiorfacultycode, superiorfaculty, ExaminingLogId, ExpertId, zlmc, zlzz, zlh, sqdw, sqny, zljsm, qr, tjbs, pm, zllbm, patent_application_type, sqh, sygjm, gkrq, sqzt, shouqrq, nation, printxh, filename, SJLY, QrBZ, SchoolNo, AgencyNo, Agency, zlmc_EN, inventor_finisher, scbj, inventor, claimusername, sfkhgsr, bz, year_of_assessment, is_inserted_by_teacher, islock, sfjdwdydw, transfer, user_type, current_status
+        from (select *
+        from data_test.ip_temp_table p
+        inner join data_test.cxr_dr_gx v
+        on p.id=v.ip_id) as ip
+        where (ip.flag=0);
+
+
+		#### 删除没有更新内容的日志记录，即updatecontent=''的日志记录
+		delete from sams.sys_datalog where datatype='专利' and name='知识产权管理信息平台' and updatecontent='';
+
+		create temporary table data_test.cxr_sys_datalog like sams.sys_datalog;
+        insert into data_test.cxr_sys_datalog select * from sams.sys_datalog where datatype='专利' and name='知识产权管理信息平台' and updatecontent='新增' group by datakeyid having count(*)>1;
+        delete from sams.sys_datalog
+        where datakeyid in (select datakeyid from data_test.cxr_sys_datalog)
+        and datatype='专利' and name='知识产权管理信息平台' and updatecontent='新增' and substring(createdate,1,10)=substring(now(),1,10);
+        drop temporary table data_test.cxr_sys_datalog;
+
+
+	    IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('16','Update_sr_patent','0',now(),'执行成功，有更新内容');
+	    END IF;
+    end if ;
+END

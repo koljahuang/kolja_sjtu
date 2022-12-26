@@ -1,0 +1,48 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_KY_teacher_info_all_adl`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+	update data_test.teacher_info_all_adl_KY set SCBJ='Y'
+    where not exists (select * from sams_data.teacher_info_all_adl B where  data_test.teacher_info_all_adl_KY.userid=B.userid);
+
+    update data_test.teacher_info_all_adl_KY A
+    inner join sams_data.teacher_info_all_adl B on A.userid=B.userid
+    set  A.name=B.name,A.birthdate=B.birthdate,A.gender=B.gender,A.faculty=B.faculty,A.facultycode=B.facultycode,A.superiorfaculty=B.superiorfaculty,A.superiorfacultycode=B.superiorfacultycode,A.schoolym=B.schoolym,A.przwm=B.przwm,A.print_mc=B.print_mc,A.jzgmblc=B.jzgmblc,A.bzmc=B.bzmc,A.cszymc=B.cszymc,A.gwmc=B.gwmc,A.yxdm_academic=B.yxdm_academic,A.yjfx=B.yjfx,A.rylbmc=B.rylbmc,A.organname=B.organname,A.kpresult=B.kpresult,A.xlmc=B.xlmc,A.graduationym=B.graduationym,A.xwmc=B.xwmc,A.educationym=B.educationym,A.lxhg=B.lxhg,A.mzdm=B.mzdm,A.mzmc=B.mzmc,A.rylbm=B.rylbm,A.jzglbm=B.jzglbm,A.gwm=B.gwm,A.bzm=B.bzm,A.startym=B.startym,A.pyht=B.pyht,A.GJM=B.GJM,A.ZJM=B.ZJM,A.usertype=B.usertype,A.updateDate=B.updateDate,A.is_txfp=B.is_txfp,A.major_level_no=B.major_level_no,A.major_level=B.major_level,A.xzzw=B.xzzw,A.xnprgw=B.xnprgw,A.team_day_5=B.team_day_5,A.team_count_5=B.team_count_5,A.ryztm=B.ryztm,A.txrq=B.txrq,A.lxrq=B.lxrq,A.zwzj=B.zwzj,A.jaccount=B.jaccount,A.gjmc=B.gjmc,A.work_date=B.work_date,A.age=B.age,A.place_origin=B.place_origin,A.partisan_assemble=B.partisan_assemble,A.joinym=B.joinym,A.graduate_school=B.graduate_school,A.graduate_school_academic=B.graduate_school_academic,A.contract_enddate=B.contract_enddate,A.job_startdate=B.job_startdate,A.job_enddate=B.job_enddate,A.staff_rank=B.staff_rank,A.staff_rank_date=B.staff_rank_date,A.title_rank=B.title_rank,A.title_rank_date=B.title_rank_date,A.marital_status=B.marital_status,A.home_address=B.home_address,A.title_date=B.title_date,A.phone=B.phone,A.SWRQ=B.SWRQ,A.print_jz=B.print_jz,A.przwm_jz=B.przwm_jz,A.hgny=B.hgny,A.first_contract_startym=B.first_contract_startym,A.first_contract_endym=B.first_contract_endym,A.branch_name=B.branch_name,A.branch_secretary=B.branch_secretary
+    where A.userid is not null;
+
+    insert into data_test.teacher_info_all_adl_KY (userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,organname,kpresult,xlmc,graduationym,xwmc,educationym,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,graduate_school_academic,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym,branch_name,branch_secretary)
+    select userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,organname,kpresult,xlmc,graduationym,xwmc,educationym,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,graduate_school_academic,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym,branch_name,branch_secretary
+    from sams_data.teacher_info_all_adl
+    where not exists (select * from data_test.teacher_info_all_adl_KY B where sams_data.teacher_info_all_adl.userid=B.userid  );
+
+	update data_test.yjs_mx_all_KY set SCBJ='Y'
+    where not exists (select * from sams_data.yjs_mx_all B
+    where data_test.yjs_mx_all_KY.dsgh=B.dsgh
+      and data_test.yjs_mx_all_KY.XH=B.XH
+      and data_test.yjs_mx_all_KY.XM=B.XM);
+
+    update data_test.yjs_mx_all_KY A
+    inner join sams_data.yjs_mx_all B on A.dsgh=B.dsgh and A.XH=B.XH and A.XM=B.XM
+    set  A.dsxm=B.dsxm,A.superiorfacultycode=B.superiorfacultycode,A.superiorfaculty=B.superiorfaculty,A.faculty=B.faculty,A.facultycode=B.facultycode,A.xslb=B.xslb,A.bysj=B.bysj,A.rxny=B.rxny,A.type=B.type,A.ktrq=B.ktrq,A.dbrq=B.dbrq,A.nj=B.nj,A.bj=B.bj,A.yxdm=B.yxdm,A.major=B.major,A.major_code=B.major_code,A.pycc=B.pycc,A.zxbs=B.zxbs,A.sfryjh=B.sfryjh,A.pyfs=B.pyfs,A.rxfs=B.rxfs,A.yjbysj=B.yjbysj,A.xjzt=B.xjzt,A.xzfdlsxm=B.xzfdlsxm,A.xzfdlsgh=B.xzfdlsgh,A.bz=B.bz,A.dszdfs=B.dszdfs,A.XSLBMC=B.XSLBMC,A.xslbm=B.xslbm,A.is_edit_self=B.is_edit_self,A.is_cjzd=B.is_cjzd,A.is_qjzd=B.is_qjzd,A.is_err=B.is_err,A.PRZWM=B.PRZWM,A.PRZWMC=B.PRZWMC,A.xxfsdm=B.xxfsdm,A.xxfsmc=B.xxfsmc,A.lwmc=B.lwmc,A.score_limit=B.score_limit
+    where A.dsgh is not null;
+
+    insert into data_test.yjs_mx_all_KY (dsgh, dsxm, superiorfacultycode, superiorfaculty, facultycode, faculty, xslb, XH, XM, bysj, rxny, type, ktrq, dbrq, nj, bj, yxdm, major, major_code, pycc, zxbs, sfryjh, pyfs, rxfs, yjbysj, xjzt, xzfdlsxm, xzfdlsgh, bz, dszdfs, XSLBMC, xslbm, is_cjzd, is_qjzd, xxfsdm, xxfsmc, lwmc, score_limit)
+    select dsgh, dsxm, superiorfacultycode, superiorfaculty, facultycode, faculty, xslb, XH, XM, bysj, rxny, type, ktrq, dbrq, nj, bj, yxdm, major, major_code, pycc, zxbs, sfryjh, pyfs, rxfs, yjbysj, xjzt, xzfdlsxm, xzfdlsgh, bz, dszdfs, XSLBMC, xslbm, is_cjzd, is_qjzd, xxfsdm, xxfsmc, lwmc, score_limit
+    from sams_data.yjs_mx_all
+    where not exists (select * from data_test.yjs_mx_all_KY B
+    where sams_data.yjs_mx_all.dsgh=B.dsgh
+      and sams_data.yjs_mx_all.XH=B.XH
+      and sams_data.yjs_mx_all.XM=B.XM);
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('35','Update_KY_teacher_info_all_adl','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('35','Update_KY_teacher_info_all_adl','0',now(),'执行成功');
+	END IF;
+
+END

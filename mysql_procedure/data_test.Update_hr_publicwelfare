@@ -1,0 +1,110 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_hr_publicwelfare`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断是否有更新信息
+	if (
+	    (select count(*)
+	    from sams_factdata.sr_academic_act
+	    where superiorfacultycode='43000' and scbj='N' and status='77' and activity_type<>'展览' and scbj='N'
+	    )<50 and
+	    (select count(*)
+	    from sams_factdata.sr_academic_pt
+	    where superiorfacultycode='43000' and scbj='N' and status='77' and scbj='N'
+	    )<50) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('22','Update_hr_publicwelfare','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('22','Update_hr_publicwelfare','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+
+        create temporary table sams.tmp_hr_publicwelfare like sams.hr_publicwelfare;
+
+        insert sams.tmp_hr_publicwelfare (id, welfareyear, superiorfacultycode, superiorfaculty, facultycode,
+                                      faculty, userid, username, welfarename, begindate, enddate,workdesc,
+                                      file_id, attach_name, file_url, islock, status, scbj,score,comment)
+        select uuid(),
+               substring(activity_date,1,4),
+               b.superiorfacultycode,
+               b.superiorfaculty,
+               b.facultycode,
+               b.faculty,
+               a.user_id,
+               b.name_cert,
+               a.activity_name,
+               a.activity_date,
+               a.activity_date,
+               '来自学术会议',
+               a.file_id,
+               a.file_name,
+               a.file_url,
+               '1',
+               '77',
+               'N',
+               1.00,
+               '由学术会议批量迁移'
+        from sams_factdata.sr_academic_act a
+        left join sams.hr_basic b
+        on a.user_id=b.userid and b.usertype='C'
+        where a.superiorfacultycode='43000' and a.scbj='N' and status='77' and a.activity_type<>'展览';
+
+        insert sams.tmp_hr_publicwelfare (id, welfareyear, superiorfacultycode, superiorfaculty, facultycode,
+                                      faculty, userid, username, welfarename, begindate, enddate,workdesc,
+                                      file_id, attach_name, file_url, islock, status, scbj,score,comment)
+        select uuid(),
+               if(a.end_time is not null and a.start_time<>'',substring(start_time,1,4),null),
+               b.superiorfacultycode,
+               b.superiorfaculty,
+               b.facultycode,
+               b.faculty,
+               a.user_id,
+               b.name_cert,
+               concat(a.academic_org,'(',a.academic_title,')'),
+               a.start_time,
+               a.end_time,
+               '来自学术兼职',
+               a.file_id,
+               a.file_name,
+               a.file_url,
+               '1',
+               '77',
+               'N',
+               1.00,
+               '由学术兼职批量迁移'
+        from sams_factdata.sr_academic_pt a
+        left join sams.hr_basic b
+        on a.user_id=b.userid and b.usertype='C'
+        where a.superiorfacultycode='43000' and a.scbj='N' and status='77';
+
+        insert sams.hr_publicwelfare(id, welfareyear, superiorfacultycode, superiorfaculty, facultycode,
+                                     faculty, userid, username, welfarename, place, begindate, enddate, workhours,
+                                     workdesc, pointid, createdate, file_id, attach_name, file_url, islock, content,
+                                     status, office, scbj, comment, point_name, parent_point_name, score)
+        select id, welfareyear, superiorfacultycode, superiorfaculty, facultycode,
+                                     faculty, userid, username, welfarename, place, begindate, enddate, workhours,
+                                     workdesc, pointid, createdate, file_id, attach_name, file_url, islock, content,
+                                     status, office, scbj, comment, point_name, parent_point_name, score
+		from sams.tmp_hr_publicwelfare
+		where not exists (
+		    select * from sams.hr_publicwelfare B
+		    where B.userid=sams.tmp_hr_publicwelfare.userid
+		      and B.welfarename=sams.tmp_hr_publicwelfare.welfarename
+		      and ifnull(B.welfareyear,'')=ifnull(sams.tmp_hr_publicwelfare.welfareyear,''));
+
+
+        drop temporary table sams.tmp_hr_publicwelfare;
+
+	    IF EXCEPTION = 1 THEN
+	        ROLLBACK;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('22','Update_hr_publicwelfare','1',now(),'执行失败');
+	    ELSE
+	        COMMIT;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('22','Update_hr_publicwelfare','0',now(),'执行成功');
+	    END IF;
+    end if;
+END

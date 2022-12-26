@@ -1,0 +1,520 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_software_info`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断ip表是否有更新信息
+	if ((select count(*) from data_test.ip_software_temp_table)=0) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('17','Update_software_info','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('17','Update_software_info','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+        update data_test.ip_software_temp_table set zsbh=concat('软著登字第',substring_index(substring_index(zsbh,'第',-1),'号',1),'号') where id is not null;
+        update data_test.ip_software_temp_table set updateby='知识产权管理信息平台', createby='知识产权管理信息平台' where createby='ip';
+
+        update data_test.ip_software_temp_table set ky_gh=replace(ltrim(replace(gh,'0',' ')),' ','0') where ky_gh is null;
+        update data_test.ip_software_temp_table a
+        inner join (select * from sams.hr_basic where usertype='C') b
+        on a.ky_gh=b.ky_userid and a.xm=b.name_cert
+        set a.gh=b.userid
+        where ky_gh is not null;
+
+
+        update data_test.ip_software_temp_table ip, sams.hr_basic hr    #### 通过工号来更新没有superfacultycode的条目
+        set ip.superfacultycode=hr.superiorfacultycode, ip.superfaculty=hr.superiorfaculty, ip.facultycode=hr.facultycode
+        where ip.gh=hr.userid and (hr.usertype='C');
+
+        update data_test.ip_software_temp_table ip, sams.hr_basic hr     #### 通过jaccount来更新没有工号的条目，添加工号
+        set ip.gh = hr.userid, ip.ky_gh=hr.ky_userid, ip.superfacultycode=hr.superiorfacultycode, ip.superfaculty=hr.superiorfaculty, ip.facultycode=hr.facultycode
+        where (ip.gh is null) and (hr.usertype='C') and (ip.jaccount=hr.jaccount) and (ip.xm=hr.name_cert);
+
+        update data_test.ip_software_temp_table ip         #### 通过姓名+学院匹配hr_basic来更新没有工号的条目，添加工号
+        inner join(
+            select ip1.id,hr1.userid,hr1.ky_userid,hr1.superiorfacultycode,hr1.facultycode
+            from (
+                select *
+                from data_test.ip_software_temp_table
+                where superfaculty<>'' and gh is null) ip1
+            inner join (
+                select *
+                from sams.hr_basic
+                where usertype='C') as hr1
+            on (ip1.superfaculty=hr1.superiorfaculty) and (ip1.xm=hr1.name_cert)) hr
+        on ip.id = hr.id
+        set ip.gh = hr.userid, ip.ky_gh=hr.ky_userid, ip.superfacultycode=hr.superiorfacultycode, ip.facultycode=hr.facultycode
+        where ip.gh is null;
+
+        update data_test.ip_software_temp_table
+        set superfaculty=null
+        where gh is null;
+
+        update data_test.ip_software_temp_table a
+		inner join sams_factdata.v_dm_bm b
+		on a.superfaculty=b.C_NAME
+		set a.superfacultycode=b.C_ID
+		where a.superfacultycode is null;
+
+        truncate data_test.cxr_dr_gx_software;
+
+        #################################   采用证书编号匹配award_software_info
+
+
+        insert data_test.cxr_dr_gx_software (ip_jlid, award_id,award_scbj,award_islock, flag, rz_bz, stuff_id, stuff_gh, stuff_xm, stuff_status, ip_id, ip_gh, ip_xm, ip_status)
+        select ip.jlid as ip_jlid,id as award_id,award_scbj,award_islock,'1' as flag, '匹配方式:软著证书编号' as rz_bz, stuff_id, stuff_gh, stuff_xm, stuff_status, ip_id, ip_gh, ip_xm, ip_status
+        from (
+            select jlid,id,award_scbj,award_islock,stuff_id,stuff_gh,stuff_xm,stuff_status
+            from(
+                select jlid,rjmc,rjjc,zsbh,sqrq,nation,softdept,school_sign
+                from data_test.ip_software_temp_table
+                where zsbh is not null and zsbh<>'软著登字第号'
+                group by jlid) a
+            inner join (
+                select c.id, c.zsbh, c.rjmc,c.scbj as award_scbj, c.islock as award_islock, d.id as stuff_id, d.gh as stuff_gh, d.xm as stuff_xm, d.status as stuff_status
+                from sams_factdata.award_software_info c
+                left join sams_factdata.award_stuff d
+                on c.id=d.jlid
+            ) b
+            on substring_index(substring_index(a.zsbh,'第',-1),'号',1)=substring_index(substring_index(b.zsbh,'第',-1),'号',1)) stuff
+        inner join (select jlid, id as ip_id, gh as ip_gh, ky_gh as ip_ky_gh, xm as ip_xm, status as ip_status from data_test.ip_software_temp_table) ip
+        on stuff.jlid=ip.jlid and (ifnull(stuff.stuff_gh,'0')=ifnull(ip.ip_gh,'1') or ifnull(stuff.stuff_gh,'0')=ifnull(ip.ip_ky_gh,'1') or ifnull(stuff.stuff_xm,'')=ip.ip_xm);
+
+
+        #################################   采用软件名称匹配award_software_info
+        insert data_test.cxr_dr_gx_software (ip_jlid, award_id,award_scbj,award_islock, flag, rz_bz, stuff_id, stuff_gh, stuff_xm, stuff_status, ip_id, ip_gh, ip_xm, ip_status)
+        select ip.jlid as ip_jlid,id as award_id,award_scbj,award_islock,'2' as flag, '匹配方式:软著名称' as rz_bz, stuff_id, stuff_gh, stuff_xm, stuff_status, ip_id, ip_gh, ip_xm, ip_status
+        from (
+            select jlid,id,award_scbj,award_islock,stuff_id,stuff_gh,stuff_xm,stuff_status
+            from(
+                select jlid,rjmc,rjjc,zsbh,sqrq,nation,softdept,school_sign
+                from data_test.ip_software_temp_table
+                where rjmc is not null and rjmc<>'' and jlid not in (select ip_jlid from data_test.cxr_dr_gx_software)
+                group by jlid) a
+            inner join (
+                select c.id, c.zsbh, c.rjmc, c.scbj as award_scbj, c.islock as award_islock, d.id as stuff_id, d.gh as stuff_gh, d.xm as stuff_xm, d.status as stuff_status
+                from sams_factdata.award_software_info c
+                left join sams_factdata.award_stuff d
+                on c.id=d.jlid
+            ) b
+            on replace(a.rjmc,' ','')=replace(b.rjmc,' ','')) stuff
+        inner join (select jlid, id as ip_id, gh as ip_gh, ky_gh as ip_ky_gh, xm as ip_xm, status as ip_status from data_test.ip_software_temp_table) ip
+        on stuff.jlid=ip.jlid and (ifnull(stuff.stuff_gh,'0')=ifnull(ip.ip_gh,'1') or ifnull(stuff.stuff_gh,'0')=ifnull(ip.ip_ky_gh,'1') or ifnull(stuff.stuff_xm,'')=ip.ip_xm);
+
+
+        ################  备份dr_gx表，方便溯源操作
+        insert data_test.cxr_dr_gx_software_bz (uid, ip_jlid, award_id, award_scbj, award_islock, flag, rz_bz, stuff_id, stuff_gh, stuff_xm, stuff_status, ip_id, ip_gh, ip_xm, ip_status) select * from data_test.cxr_dr_gx_software;
+
+        #########################################################################
+        # 开始日志和award_software_info、award_stuff的写入
+        #########################################################################
+
+        #### 对目标表award_stuff进行匹配导入，匹配导入条目类型：status='77' 即该条目已确认 (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid,subkeyid, logtype, datatype, name, updatecontent, datapre, datapost, createdate)
+		select uuid(),
+		       soft.id as datakeyid,
+		       stuff.id as subkeyid,
+		       '同步' as logtype,
+		       '软件著作权' as datatype,
+		       '知识产权管理信息平台' as name,
+		       concat(
+		           if(ifnull(soft.rjmc,'')<>ifnull(ip.rjmc,''),concat('软件名称:', ifnull(soft.rjmc,''), '-->', ifnull(ip.rjmc,''), ';'),''),
+		           if(ifnull(soft.rjjc,'')<>ifnull(ip.rjjc,''),concat('软件简称:', ifnull(soft.rjjc,''), '-->', ifnull(ip.rjjc,''), ';'),''),
+		           if(ifnull(soft.zzqr,'')<>ifnull(ip.zzqr,''),concat('著作权人:', ifnull(soft.zzqr,''), '-->', ifnull(ip.zzqr,''), ';'),''),
+		           if(ifnull(soft.sqrq,'')<>ifnull(ip.sqrq,''),concat('授权日期:', ifnull(soft.sqrq,''), '-->', ifnull(ip.sqrq,''), ';'),''),
+		           if(ifnull(soft.xxbh,'')<>ifnull(ip.xxbh,''),concat('学校编号:', ifnull(soft.xxbh,''), '-->', ifnull(ip.xxbh,''), ';'),''),
+		           if(ifnull(soft.swsbh,'')<>ifnull(ip.swsbh,''),concat('事务所编号:', ifnull(soft.swsbh,''), '-->', ifnull(ip.swsbh,''), ';'),''),
+		           if(ifnull(soft.zsbh,'')<>ifnull(ip.zsbh,''),concat('证书编号:', ifnull(soft.zsbh,''), '-->', ifnull(ip.zsbh,''), ';'),''),
+		           if(ifnull(soft.nation,'')<>ifnull(ip.nation,''),concat('国别:', ifnull(soft.nation,''), '-->', ifnull(ip.nation,''), ';'),''),
+		           if(ifnull(soft.softdept,'')<>ifnull(ip.softdept,''),concat('授予部门:', ifnull(soft.softdept,''), '-->', ifnull(ip.softdept,''), ';'),''),
+		           if(ifnull(soft.school_sign,'')<>ifnull(ip.school_sign,''), concat('学校署名:',
+		               (case ifnull(soft.school_sign,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), '-->',
+		               (case ifnull(ip.school_sign,'')
+		                   when '' then ''
+		                   when 1 then '是'
+		                   else '否'
+		                   end), ';'),''),
+		           if(ifnull(soft.updateby,'')<>ifnull(ip.updateby,''),concat('更新来源:', ifnull(soft.updateby,''), '-->', ifnull(ip.updateby,''), ';'),''),
+		           if((stuff.gh is null or stuff.gh='') and ifnull(stuff.gh,'')<>ifnull(ip.gh,''),concat('工号:', ifnull(stuff.gh,''), '-->', ifnull(ip.gh,''), ';'),''),
+		           if((stuff.xm is null or stuff.xm='') and ifnull(stuff.xm,'')<>ifnull(ip.xm,''),concat('姓名:', ifnull(stuff.xm,''), '-->', ifnull(ip.xm,''), ';'),''),
+		           if((stuff.superfacultycode is null or stuff.superfacultycode='') and ifnull(stuff.superfacultycode,'')<>ifnull(ip.superfacultycode,''),concat('单位代码:', ifnull(stuff.superfacultycode,''), '-->', ifnull(ip.superfacultycode,''), ';'),''),
+		           if((stuff.superfaculty is null or stuff.superfaculty='') and ifnull(stuff.superfaculty,'')<>ifnull(ip.superfaculty,''),concat('单位名称:', ifnull(stuff.superfaculty,''), '-->', ifnull(ip.superfaculty,''), ';'),''),
+		           if((stuff.facultycode is null or stuff.facultycode='') and ifnull(stuff.facultycode,'')<>ifnull(ip.facultycode,''),concat('系所名称:', ifnull(stuff.facultycode,''), '-->', ifnull(ip.facultycode,''), ';'),''),
+		           if((stuff.xh is null) and ifnull(stuff.xh,'')<>ifnull(ip.xh,''),concat('排名:', ifnull(stuff.xh,''), '-->', ifnull(ip.xh,''), ';'),''),
+		           if((stuff.role is null or stuff.role='') and ifnull(stuff.role,'')<>ifnull(ip.role,''),concat('个人角色:',
+		               (case ifnull(stuff.role,'')
+		                   when '001' then '软著成果负责人'
+		                   when '002' then '软著成果参与人'
+		                   when '' then ''
+		                   else '其他'
+		                   end
+		               ), '-->', if(ifnull(ip.role,'')<>'001','软著成果参与人','软著成果负责人'), ';'),'')
+		           ) as updatecontent,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',soft.id,
+		           'type',soft.type,
+		           'rjmc',soft.rjmc,
+		           'rjjc',soft.rjjc,
+		           'zzqr',soft.zzqr,
+		           'sqrq',soft.sqrq,
+		           'xxbh',soft.xxbh,
+		           'swsbh',soft.swsbh,
+		           'zsbh',soft.zsbh,
+		           'nation',soft.nation,
+		           'softdept',soft.softdept,
+		           'bz',soft.bz,
+		           'school_sign',soft.school_sign,
+		           'year_of_assessment',soft.year_of_assessment,
+		           'islock',soft.islock,
+		           'createby',soft.createby,
+		           'createtime',soft.createtime,
+		           'updateby',soft.updateby,
+		           'updatetime',soft.updatetime,
+		           'scbj',soft.scbj),
+		            (SELECT replace(replace(replace(json_object('awardee',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',jlid,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', zsbh,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', create_time)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM sams_factdata.award_stuff where jlid=soft.id)) as datapre,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',soft.id,
+		           'type',ip.type,
+		           'rjmc',ip.rjmc,
+		           'rjjc',ip.rjjc,
+		           'zzqr',ip.zzqr,
+		           'sqrq',ip.sqrq,
+		           'xxbh',ip.xxbh,
+		           'swsbh',ip.swsbh,
+		           'zsbh',ip.zsbh,
+		           'nation',ip.nation,
+		           'softdept',ip.softdept,
+		           'bz',ip.bz,
+		           'school_sign',ip.school_sign,
+		           'year_of_assessment',ip.year_of_assessment,
+		           'islock',ip.islock,
+		           'createby',soft.createby,
+		           'createtime',soft.createtime,
+		           'updateby',ip.updateby,
+		           'updatetime',ip.updatetime,
+		           'scbj',ip.scbj),
+		            (SELECT replace(replace(replace(json_object('awardeeSet',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',jlid,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', zsbh,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', create_time)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM sams_factdata.award_stuff where jlid=soft.id)) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.award_stuff stuff
+        inner join (
+            select *
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id,award_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        on stuff.id=ip.stuff_id
+        inner join sams_factdata.award_software_info soft
+        on soft.id=ip.award_id
+        where stuff.status = '77' and ip.status='77';
+
+        update sams_factdata.award_stuff stuff,
+            (select stuff_id,gh,xm,superfacultycode,superfaculty,facultycode,xh,status,role,createtime
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        set stuff.gh=if(stuff.gh is null or stuff.gh='', ip.gh,stuff.gh),
+            stuff.xm=if(stuff.xm is null or stuff.xm='', ip.xm,stuff.xm),
+            stuff.superfacultycode=if(stuff.superfacultycode is null or stuff.superfacultycode='', ip.superfacultycode,stuff.superfacultycode),
+            stuff.superfaculty=if(stuff.superfaculty is null or stuff.superfaculty='', ip.superfaculty,stuff.superfaculty),
+            stuff.facultycode=if(stuff.facultycode is null or stuff.facultycode='', ip.facultycode,stuff.facultycode),
+            stuff.xh=if(stuff.xh is null, ip.xh,stuff.xh),
+            stuff.role=if(stuff.role is null or stuff.role='', ip.role,stuff.role)
+        where stuff.id=ip.stuff_id and stuff.status='77' and ip.status='77';
+
+        #### 对目标表award_stuff进行匹配导入，匹配导入条目类型：status not in ('77', '-1')即该条目未确认或退回  (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid,subkeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       soft.id as datakeyid,
+		       stuff.id as subkeyid,
+		       '同步' as logtype,
+		       '软件著作权' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',soft.id,
+		           'type',ip.type,
+		           'rjmc',ip.rjmc,
+		           'rjjc',ip.rjjc,
+		           'zzqr',ip.zzqr,
+		           'sqrq',ip.sqrq,
+		           'xxbh',ip.xxbh,
+		           'swsbh',ip.swsbh,
+		           'zsbh',ip.zsbh,
+		           'nation',ip.nation,
+		           'softdept',ip.softdept,
+		           'bz',ip.bz,
+		           'school_sign',ip.school_sign,
+		           'year_of_assessment',ip.year_of_assessment,
+		           'islock',ip.islock,
+		           'createby',ip.createby,
+		           'createtime',ip.createtime,
+		           'updateby',ip.createby,
+		           'updatetime',ip.createtime,
+		           'scbj',ip.scbj),
+		            (SELECT replace(replace(replace(json_object('awardeeSet',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',jlid,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', zsbh,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', create_time)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM sams_factdata.award_stuff where jlid=soft.id)) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.award_stuff stuff
+        inner join (
+            select *
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id,award_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        on stuff.id=ip.stuff_id
+        inner join sams_factdata.award_software_info soft
+        on soft.id=ip.award_id
+        where stuff.status not in ('77','-1');
+
+        update sams_factdata.award_stuff stuff,
+            (select stuff_id,gh,xm,superfacultycode,superfaculty,facultycode,xh,status,role,createtime
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        set stuff.gh=if(stuff.gh is null or stuff.gh='', ip.gh,stuff.gh),
+            stuff.xm=if(stuff.xm is null or stuff.xm='', ip.xm,stuff.xm),
+            stuff.superfacultycode=if(stuff.superfacultycode is null or stuff.superfacultycode='', ip.superfacultycode,stuff.superfacultycode),
+            stuff.superfaculty=if(stuff.superfaculty is null or stuff.superfaculty='', ip.superfaculty,stuff.superfaculty),
+            stuff.facultycode=if(stuff.facultycode is null or stuff.facultycode='', ip.facultycode,stuff.facultycode),
+            stuff.xh=if(stuff.xh is null, ip.xh,stuff.xh),
+            stuff.role=if(stuff.role is null or stuff.role='', ip.role,stuff.role)
+        where stuff.id=ip.stuff_id and stuff.status not in ('77','-1');
+
+
+        #### 对目标表award_stuff进行匹配导入，匹配导入条目类型：status='-1'即该条目已退回  (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid,subkeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       soft.id as datakeyid,
+		       stuff.id as subkeyid,
+		       '同步' as logtype,
+		       '软件著作权' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',soft.id,
+		           'type',ip.type,
+		           'rjmc',ip.rjmc,
+		           'rjjc',ip.rjjc,
+		           'zzqr',ip.zzqr,
+		           'sqrq',ip.sqrq,
+		           'xxbh',ip.xxbh,
+		           'swsbh',ip.swsbh,
+		           'zsbh',ip.zsbh,
+		           'nation',ip.nation,
+		           'softdept',ip.softdept,
+		           'bz',ip.bz,
+		           'school_sign',ip.school_sign,
+		           'year_of_assessment',ip.year_of_assessment,
+		           'islock',ip.islock,
+		           'createby',ip.createby,
+		           'createtime',ip.createtime,
+		           'updateby',ip.createby,
+		           'updatetime',ip.createtime,
+		           'scbj',ip.scbj),
+		            (SELECT replace(replace(replace(json_object('awardeeSet',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',jlid,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', zsbh,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', create_time)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM sams_factdata.award_stuff where jlid=soft.id)) as datapost,
+		       current_timestamp as createdate
+		from sams_factdata.award_stuff stuff
+        inner join (
+            select *
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id,award_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        on stuff.id=ip.stuff_id
+        inner join sams_factdata.award_software_info soft
+        on soft.id=ip.award_id
+        where stuff.status ='-1' and ip.status='77';
+
+        update sams_factdata.award_stuff stuff,
+            (select stuff_id,gh,xm,superfacultycode,superfaculty,facultycode,xh,status,role,createtime
+            from data_test.ip_software_temp_table a
+            inner join (select stuff_id,ip_id from data_test.cxr_dr_gx_software where award_scbj <> 'Y') b
+            on a.id=b.ip_id) ip
+        set stuff.gh=ip.gh,
+            stuff.xm=ip.xm,
+            stuff.superfacultycode=ip.superfacultycode,
+            stuff.superfaculty=ip.superfaculty,
+            stuff.facultycode=ip.facultycode,
+            stuff.xh=ip.xh,
+            stuff.role=ip.role,
+            stuff.create_time=ip.createtime
+        where stuff.id=ip.stuff_id and stuff.status ='-1' and ip.status='77';
+
+
+        update sams_factdata.award_software_info soft,
+            (select type,award_id,rjmc,rjjc,zzqr,sqrq,xxbh,swsbh,zsbh,nation,softdept,school_sign,updateby,updatetime,award_scbj,ip_status,stuff_status
+            from (select * from data_test.ip_software_temp_table group by jlid) a
+            inner join (select * from cxr_dr_gx_software where award_scbj <> 'Y' group by award_id) b
+            on a.jlid=b.ip_jlid) ip
+        set soft.type=ip.type,
+            soft.rjmc=ip.rjmc,
+            soft.rjjc=ip.rjjc,
+            soft.zzqr=ip.zzqr,
+            soft.sqrq=ip.sqrq,
+            soft.xxbh=ip.xxbh,
+            soft.swsbh=ip.swsbh,
+            soft.zsbh=ip.zsbh,
+            soft.nation=ip.nation,
+            soft.softdept=ip.softdept,
+            soft.school_sign=ip.school_sign,
+            soft.updateby=ip.updateby,
+            soft.updatetime=ip.updatetime
+        where soft.id=ip.award_id;
+
+
+        #### 对目标表award_stuff未匹配成功的条目进行直接导入：第一类：award_software_stuff里无对应奖项，且award_stuff里无对应获奖人员  (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid,subkeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       ip.jlid as datakeyid,
+		       ip.id as subkeyid,
+		       '同步' as logtype,
+		       '软件著作权' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',ip.jlid,
+		           'type',ip.type,
+		           'rjmc',ip.rjmc,
+		           'rjjc',ip.rjjc,
+		           'zzqr',ip.zzqr,
+		           'sqrq',ip.sqrq,
+		           'xxbh',ip.xxbh,
+		           'swsbh',ip.swsbh,
+		           'zsbh',ip.zsbh,
+		           'nation',ip.nation,
+		           'softdept',ip.softdept,
+		           'bz',ip.bz,
+		           'school_sign',ip.school_sign,
+		           'year_of_assessment',ip.year_of_assessment,
+		           'islock',ip.islock,
+		           'createby',ip.createby,
+		           'createtime',ip.createtime,
+		           'updateby',ip.createby,
+		           'updatetime',ip.createtime,
+		           'scbj',ip.scbj),
+		            (SELECT replace(replace(replace(json_object('awardeeSet',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',jlid,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', null,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', createtime)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM data_test.ip_software_temp_table where jlid=ip.jlid)) as datapost,
+		       current_timestamp as createdate
+		from data_test.ip_software_temp_table ip
+        where ip.jlid not in (select ip_jlid from data_test.cxr_dr_gx_software) and ip.id not in (select ip_id from data_test.cxr_dr_gx_software);
+
+        insert into sams_factdata.award_stuff(id, jlid, gh, xm, superfacultycode, superfaculty, facultycode, xh, jdpm, zsbh, role, percent,  status, comment, filename, fileurl, create_time)
+        select id, jlid, gh, xm, superfacultycode, superfaculty, facultycode, xh, jdpm, null, role, percent, status, comment, filename, fileurl, current_timestamp() as updatetime
+        from data_test.ip_software_temp_table
+        where jlid not in (select ip_jlid from data_test.cxr_dr_gx_software) and id not in (select ip_id from data_test.cxr_dr_gx_software);
+
+        insert into data_test.cxr_dr_gx_software_bz (ip_jlid, flag, rz_bz, ip_id, ip_gh, ip_xm, ip_status)
+        select jlid, 0, '新增，未匹配成功，无奖无人', id, gh, xm, status
+        from data_test.ip_software_temp_table
+        where jlid not in (select ip_jlid from data_test.cxr_dr_gx_software) and id not in (select ip_id from data_test.cxr_dr_gx_software);
+
+
+        #### 对目标表award_stuff未匹配成功的条目进行直接导入：第二类：award_software_stuff里有对应奖项，但award_stuff里无对应获奖人员  (先日志后更新)
+        insert into sams.sys_datalog (id, datakeyid,subkeyid, logtype, datatype, name, updatecontent, datapost, createdate)
+		select uuid(),
+		       b.award_id as datakeyid,
+		       ip.id as subkeyid,
+		       '同步' as logtype,
+		       '软件著作权' as datatype,
+		       '知识产权管理信息平台' as name,
+		       '新增' as updatecontent,
+		       JSON_MERGE(JSON_OBJECT(
+		           'id',ip.jlid,
+		           'type',ip.type,
+		           'rjmc',ip.rjmc,
+		           'rjjc',ip.rjjc,
+		           'zzqr',ip.zzqr,
+		           'sqrq',ip.sqrq,
+		           'xxbh',ip.xxbh,
+		           'swsbh',ip.swsbh,
+		           'zsbh',ip.zsbh,
+		           'nation',ip.nation,
+		           'softdept',ip.softdept,
+		           'bz',ip.bz,
+		           'school_sign',ip.school_sign,
+		           'year_of_assessment',ip.year_of_assessment,
+		           'islock',ip.islock,
+		           'createby',ip.createby,
+		           'createtime',ip.createtime,
+		           'updateby',ip.createby,
+		           'updatetime',ip.createtime,
+		           'scbj',ip.scbj),
+		            (SELECT replace(replace(replace(json_object('awardeeSet',CONCAT(
+                        '[',
+                        GROUP_CONCAT(JSON_OBJECT('id',id,'jlid',b.award_id,'gh',gh, 'xm',xm,'superfacultycode',superfacultycode, 'superfaculty',superfaculty, 'faculty',facultycode, 'xh',xh, 'jdpm',jdpm,'zsbh', null,'role', role, 'percent',percent,'status',status,'comment', comment,'filename',filename,'fileurl',fileurl,'create_time', createtime)),
+                        ']'
+                    )),'"[','['),']"',']'),'\\','')
+                    FROM data_test.ip_software_temp_table where jlid=ip.jlid)) as datapost,
+		       current_timestamp as createdate
+		from (select *
+        from data_test.ip_software_temp_table
+        where jlid in (select ip_jlid from data_test.cxr_dr_gx_software) and id not in (select ip_id from data_test.cxr_dr_gx_software)) ip
+        inner join (select * from data_test.cxr_dr_gx_software group by ip_jlid) b
+        on ip.jlid=b.ip_jlid;
+
+        insert into sams_factdata.award_stuff(id, jlid, gh, xm, superfacultycode, superfaculty, facultycode, xh, jdpm, zsbh, role, percent,  status, comment, filename, fileurl, create_time)
+        select id, b.award_id as jlid, gh, xm, superfacultycode, superfaculty, facultycode, xh, jdpm, null, role, percent, status, comment, filename, fileurl, current_timestamp() as updatetime
+        from (select * from data_test.ip_software_temp_table where jlid in (select ip_jlid from data_test.cxr_dr_gx_software) and id not in (select ip_id from data_test.cxr_dr_gx_software)) a
+        inner join (select * from data_test.cxr_dr_gx_software group by ip_jlid) b
+        on a.jlid=b.ip_jlid;
+
+
+        insert into data_test.cxr_dr_gx_software_bz (ip_jlid, award_id, award_scbj, award_islock, flag, rz_bz, ip_id, ip_gh, ip_xm, ip_status)
+        select a.jlid,b.award_id,b.award_scbj,b.award_islock, 0, '新增，未匹配成功，有奖无人', a.id, a.gh, a.xm, a.status
+        from (select * from data_test.ip_software_temp_table where jlid in (select ip_jlid from data_test.cxr_dr_gx_software) and id not in (select ip_id from data_test.cxr_dr_gx_software)) a
+        inner join (select * from data_test.cxr_dr_gx_software group by ip_jlid) b
+        on a.jlid=b.ip_jlid;
+
+        insert into sams_factdata.award_software_info(id, type, rjmc, rjjc, zzqr, sqrq, xxbh, swsbh, zsbh, nation, softdept, bz, school_sign, year_of_assessment, islock, createby, createtime, updateby, updatetime, scbj)
+        select jlid, type, rjmc, rjjc, zzqr, sqrq, xxbh, swsbh, zsbh, nation, softdept, bz, school_sign, year_of_assessment, islock, createby, createtime, null as updateby, updatetime, scbj
+        from data_test.ip_software_temp_table
+        where jlid not in (select distinct ip_jlid from data_test.cxr_dr_gx_software)
+        group by jlid;
+
+
+		#### 删除没有更新内容的日志记录，即updatecontent=''的日志记录
+		delete from sams.sys_datalog where datatype='软件著作权' and name='知识产权管理信息平台' and updatecontent='';
+
+        create temporary table data_test.cxr_sys_datalog like sams.sys_datalog;
+        insert into data_test.cxr_sys_datalog select * from sams.sys_datalog where datatype='软件著作权' and name='知识产权管理信息平台' and updatecontent='新增' group by datakeyid,subkeyid having count(*)>1;
+        delete from sams.sys_datalog
+        where subkeyid in (select subkeyid from data_test.cxr_sys_datalog)
+        and datatype='软件著作权' and name='知识产权管理信息平台' and updatecontent='新增' and substring(createdate,1,10)=substring(now(),1,10);
+        drop temporary table data_test.cxr_sys_datalog;
+
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('17','Update_software_info','1',now(),'执行失败');
+		ELSE
+		    COMMIT;
+		    insert into sams.T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('17','Update_software_info','0',now(),'执行成功，有更新内容');
+	    END IF;
+    end if ;
+END

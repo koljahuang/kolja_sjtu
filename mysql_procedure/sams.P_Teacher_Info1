@@ -1,0 +1,187 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `P_Teacher_Info1`(IN v_year varchar(20))
+BEGIN
+	#Routine body goes here...
+		DECLARE EXCEPTION INT DEFAULT 0;
+		DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+		START TRANSACTION;
+			DELETE from sams_factdata.jg_jbxx where gh='L0317';
+			delete from sams.hr_basic where userid='L0317';
+			update  sams_factdata.jg_jbxx A set A.LXHG='是' where (A.LXHG='否' or A.LXHG is null) and ryztm='9' and gh in (
+            select userid from sams.hr_academicdeg A where  A.schooltype not in ('156','')and educationym<'2020.06.30' and educationym!='');
+            update sams_factdata.jg_jbxx set gwm='' where gwm is null;
+			-- 教师信息中间表，未关联代码表 全表更新
+			truncate sams_data.teacher_info_mdl;
+			insert into sams_data.teacher_info_mdl
+			(id,userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,
+			schoolym,przwm,print_mc,JZGLBM,BZM,CSZYM,GWM,YXDM_ACADEMIA,YJFX,RYLBM,OrganName,kpresult,
+			xlm,xwm,
+			LXHG,mz,startym,pyht,GJM,ZJM,userType,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,
+			gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,
+			print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym)
+			select 0,a.userid,a.name_cert name,a.birthdate,a.gender,a.faculty,a.facultycode,
+			a.superiorfaculty,a.superiorfacultycode,
+			if(schoolym is null,(select min(startym) from sams.hr_contract b where a.userid = b.userid ),schoolym),b.dm,b.print_mc,
+			c.JZGLBM,c.BZM,c.CSZYM,c.GWM,c.YXDM_ACADEMIA,c.YJFX,c.RYLBM,
+			d.OrganName,e.kpresult,
+			(select min(educationdegcode) from sams.hr_academicdeg b where a.userid = b.userid and educationdegcode > '00' ) xlm,
+			(select min(academiccode) from sams.hr_academicdeg b where a.userid = b.userid and academiccode > '0'  ) xwm,
+			c.LXHG,c.MZM,f.startym,f.employmentway, c.GJM,c.ZJM,a.usertype as userType,curdate(),
+			case when c.txfp='退休返聘（校内）' and c.txfp_pyjsrq>=replace(curdate(),'-','.') then 1 else 0 end as is_txfp,
+			ifnull(g.major_level1_No,g1.xkdm) major_level_no,ifnull(g.major_level1,g1.xkmc) major_level ,h.positionname xzzw,c.prgw xnprgw,i.totalDays team_day_5,i.times team_count_5,a.jobstatus,c.LTXNY,c.LXRQ,bb.mc zwzj,a.jaccount,
+			j.c_name gjmc,c.gzny work_date,  round(((year(now())-substr(c.csrq,1,4))*12+month(now())-substr(c.csrq,6,2))/12 ) age,k.mc place_origin,l.dpmc partisan_assemble,l.joinym,
+			(select schoolname from sams.hr_academicdeg b where a.userid=b.userid order by b.graduationym desc limit 1 ) graduate_school,f.endym contract_enddate,f.pact_startym job_startdate,f.pact_endym job_enddate,m.zyzj staff_rank,m.prny staff_rank_date,
+			n.zyjszwzj title_rank,n.qsrq title_rank_date,o.mc marital_status,p.jtdz home_address,c.PDNY title_date,a.telephone phone,c.SWRQ,bbb.mc print_jz,bbb.dm przwm_jz,c.HGNY,ff.first_contract_startym,ff.first_contract_endym
+			from
+			sams.hr_basic a
+			-- 获取教职工基本信息表里的岗位码，教职工类别码等
+			left join sams_factdata.jg_jbxx c on a.userid=c.GH and c.scbj='N'
+			left join sams_factdata.dm_gb8561 as b on substring(c.przwm,1,3)=b.dm
+	        left join sams_factdata.dm_gb8561 as bbb on c.PRZWM=bbb.dm
+			left join sams_factdata.DM_ZJM bb on substring(c.przwm,3,1)=bb.dm
+			left join
+			(
+				select GH,GROUP_CONCAT(B.levelsname) as OrganName
+				from sams.RCJHK A
+				inner join sams_factdata.esTalentType B on A.TalentTypeAbbr=B.TalentTypeAbbr
+				where A.scbj='N' and A.TalentTypeAbbr not in('DQFFZFTTZJ','YCXFFZFTTZJ') -- and B.TalentTypeId not like '3%' and B.TalentTypeId not like '4%'
+				group by GH
+			) d on a.userid=d.GH
+			left join
+			(
+			select userid,GROUP_CONCAT(CONCAT(BB.C_NAME,'：',AA.result)) as kpresult
+			from sams.hr_assessment AA
+			left join sams_factdata.v_dm_bm BB on AA.unit=BB.C_ID
+			where assessmentyear =convert(2020-1,char) and type='1' and AA.scbj='N'
+			group by userid
+			) e on a.userid = e.userid
+			left join
+			(
+			select userid,startym,endym,employmentway,pact_startym,pact_endym
+			from sams.hr_contract               -- 获取教职工合同数据
+			where isnow=1 and userid is not null and scbj='N' group by userid
+			)  f on a.userid=f.userid
+			left join (
+			    select userid,
+                    substring_index(group_concat(employmentway order by startym),',','1') as first_contract,
+                    substring_index(group_concat(startym order by startym),',','1') as first_contract_startym,
+                    substring_index(group_concat(endym order by startym),',','1') as first_contract_endym
+                from sams.hr_contract where userid is not null and userid<>'' and startym<>'' and endym<>'' and scbj='N'
+                group by userid
+                ) ff on a.userid=ff.userid
+			left join sams_factdata.xkpg_teacher_ryjd g on a.userid=g.gh
+			left join sams_factdata.bsh_xk g1 on a.userid=g1.gh
+			left join
+			(
+			select userid,GROUP_CONCAT(concat(ifnull(certdate,''),case when ifnull(certdate,'')='' then '' else ' | ' end,ifnull(B.mc,''),
+			    case when (ifnull(B.mc,'') ='' or (ifnull(B.dm,'') in ('5','6','7','8'))
+			        or (A.positionname like '%科员%' or A.positionname like '科长' or A.positionname like '%副科%' or A.positionname like '%正科%')) then '' else ' | ' end,
+			    case when (ifnull(B.dm,'') in ('5','6','7','8')
+			        or (A.positionname like '%科员%' or A.positionname like '科长' or A.positionname like '%副科%' or A.positionname like '%正科%')) then '' else positionname end)
+				order by certdate desc separator '\n' ) positionname from sams.hr_partyposition A
+			left join sams_factdata.DM_JB_ZD B on A.positionlevel=B.dm and B.dm<9
+			where dqrzzk='Y' and scbj='N' group by userid
+			) h on a.userid=h.userid
+			left join
+			(
+			select member.MEMBER  jaccount, sum(datediff(team.ComeChinaDate, team.LeaveChinaDate) + 1) totalDays, count(year(team.LeaveChinaDate)) times
+			from sams_factdata.TeamMember member
+			inner join sams_factdata.Team team on team.ID = member.TEAMID and team.APPROVED = '1' and (team.ISDELETE is null or team.ISDELETE <> '1')
+			where year(team.LeaveChinaDate) between year(now())-4 and year(now())
+			group by  member.MEMBER
+			) i on a.jaccount=i.jaccount
+			left join sams_factdata.dm_gjdqmc j on c.gjm=j.c_id
+			left join sams_factdata.DM_GB2260 k on c.jgm=k.dm
+			left join
+			(select substring_index(group_concat(a.partyname order by a.joinym asc),',',-1) dpmc,
+			        substring_index(group_concat(a.joinym order by a.joinym asc),',',-1) joinym,
+			        a.userid from sams.hr_party a group by a.userid) l on a.userid=l.userid
+			left join
+			(select prny,zyzj,gh from sams_factdata.ZYZJK a where sfdq='是' and qr='2' group by a.gh ) m on a.userid=m.gh
+			left join
+			(select substring_index(group_concat(qsrq order by xh asc),',',-1) as qsrq,
+			        substring_index(group_concat(zyjszwzj order by xh asc),',',-1) as zyjszwzj,
+			        gh
+			from sams_factdata.zyjszwzjk a where sfdq='是' and qr='2' group by a.gh ) n on a.userid=n.gh
+			left join sams_factdata.DM_GB4766 o on c.HYZKM=o.dm
+			left join sams_factdata.jg_bglxfs p on a.userid=p.gh and p.scbj='N'
+ 		    where a.scbj='N' AND a.usertype='C' AND (LENGTH(a.userid)<=11 OR a.userid = 'WP1805090001');
+
+
+			-- 在校教职工结果表
+		    if ((select count(id) from sams_data.teacher_info_mdl) < 20000) then
+		        IF EXCEPTION = 1 THEN
+			        ROLLBACK;
+			        insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','1',now(),'执行失败');
+		        ELSE
+			        COMMIT;
+				    insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','0',now(),'执行成功');
+		        END IF;
+		    else
+			    truncate sams_data.teacher_info_adl;
+			    insert into sams_data.teacher_info_adl
+			    (id,userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,
+			    organname,kpresult,xlmc,xwmc,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym)
+			    select 0,a.userid,a.name,a.birthdate,a.gender,a.faculty,a.facultycode,a.superiorfaculty,a.superiorfacultycode,a.schoolym,a.przwm,a.print_mc,b.mc,c.mc,d.mc,e.mc,a.YXDM_ACADEMIA,a.YJFX,f.mc,
+			    a.OrganName,a.kpresult,g.mc,h.mc,a.lxhg,a.mz,k.mzmc,a.rylbm,a.jzglbm,a.gwm,a.bzm,a.startym,a.pyht, a.GJM,a.ZJM,
+			    a.userType,curdate(),a.is_txfp,a.major_level_no,a.major_level,a.xzzw,a.xnprgw,a.team_day_5,a.team_count_5,a.zwzj,a.jaccount,a.gjmc,a.work_date,a.age,a.place_origin,a.partisan_assemble,a.joinym,a.graduate_school,a.contract_enddate,a.job_startdate,a.job_enddate,a.staff_rank,a.staff_rank_date,a.title_rank,a.title_rank_date,a.marital_status,a.home_address,a.title_date,a.phone,a.SWRQ,a.print_jz,a.przwm_jz,a.hgny,a.first_contract_startym,a.first_contract_endym
+			    from sams_data.teacher_info_mdl a  -- 教师信息中间表
+			    left join sams_factdata.dm_jzglb_gw b on a.JZGLBM=b.dm  -- 获取教职工类别名称
+			    left join sams_factdata.dm_bzlb_gw c on a.BZM=c.dm  -- 获取编制类别名称
+			    left join sams_factdata.dm_zy d on a.CSZYM=d.dm     -- 获取专业类别名称
+			    left join sams_factdata.dm_bzlb_gw e on a.GWM=e.dm  -- 获取岗位名称
+			    left join sams_factdata.dm_rylbm f on a.RYLBM=f.dm     -- 获取人员类别名称
+			    left join sams_factdata.DM_GB4658 g on a.xlm=g.dm  -- 获取学历名称
+			    left join sams_factdata.DM_GB6864 h on a.xwm=h.dm -- 获取学位名称
+			    left join sams_factdata.DM_MZ k on a.mz=k.MZDM
+			    where a.ryztm='9';  -- 获取名族代码名称
+
+
+			    -- 所有教职工结果表
+			    CREATE TEMPORARY TABLE sams_data.tmp_teacher_info_all_adl like sams_data.teacher_info_all_adl;
+			    truncate sams_data.tmp_teacher_info_all_adl;
+			    insert into sams_data.tmp_teacher_info_all_adl
+			    (userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,organname,kpresult,xlmc,xwmc,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym)
+			    select a.userid,a.name,a.birthdate,a.gender,a.faculty,a.facultycode,a.superiorfaculty,a.superiorfacultycode,a.schoolym,a.przwm,a.print_mc,b.mc,c.mc,d.mc,e.mc,a.YXDM_ACADEMIA,a.YJFX,f.mc,
+			    a.OrganName,a.kpresult,g.mc,h.mc,a.lxhg,a.mz,k.mzmc,a.rylbm,a.jzglbm,a.gwm,a.bzm,a.startym,a.pyht, a.GJM,a.ZJM,
+			    a.userType,curdate(),a.is_txfp,a.major_level_no,a.major_level,a.xzzw,a.xnprgw,a.team_day_5,a.team_count_5,a.ryztm,a.txrq,a.lxrq,a.zwzj,a.jaccount,a.gjmc,a.work_date,a.age,a.place_origin,a.partisan_assemble,a.joinym,a.graduate_school,a.contract_enddate,a.job_startdate,a.job_enddate,a.staff_rank,a.staff_rank_date,a.title_rank,a.title_rank_date,a.marital_status,a.home_address,a.title_date,a.phone,a.SWRQ,a.print_jz,a.przwm_jz,a.hgny,a.first_contract_startym,a.first_contract_endym
+			    from sams_data.teacher_info_mdl a  -- 教师信息中间表
+			    left join sams_factdata.dm_jzglb_gw b on a.JZGLBM=b.dm  -- 获取教职工类别名称
+			    left join sams_factdata.dm_bzlb_gw c on a.BZM=c.dm  -- 获取编制类别名称
+			    left join sams_factdata.dm_zy d on a.CSZYM=d.dm     -- 获取专业类别名称
+			    left join sams_factdata.dm_bzlb_gw e on a.GWM=e.dm  -- 获取岗位名称
+			    left join sams_factdata.dm_rylbm f on a.RYLBM=f.dm     -- 获取人员类别名称
+			    left join sams_factdata.DM_GB4658 g on a.xlm=g.dm  -- 获取学历名称
+			    left join sams_factdata.DM_GB6864 h on a.xwm=h.dm -- 获取学位名称
+			    left join sams_factdata.DM_MZ k on a.mz=k.MZDM ;-- 获取名族代码名称
+
+			    if ((select count(id) from sams_data.tmp_teacher_info_all_adl) < 20000) then
+		            IF EXCEPTION = 1 THEN
+			        ROLLBACK;
+			        insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','1',now(),'执行失败');
+		            ELSE
+			        COMMIT;
+				    insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','0',now(),'执行成功');
+		            END IF;
+		        else
+		            delete from sams_data.teacher_info_all_adl
+		            where not exists (select * from sams_data.tmp_teacher_info_all_adl B where  sams_data.teacher_info_all_adl.userid=B.userid);
+
+		            update sams_data.teacher_info_all_adl A
+		            inner join sams_data.tmp_teacher_info_all_adl B on A.userid=B.userid
+		            set  A.name=B.name,A.birthdate=B.birthdate,A.gender=B.gender,A.faculty=B.faculty,A.facultycode=B.facultycode,A.superiorfaculty=B.superiorfaculty,A.superiorfacultycode=B.superiorfacultycode,A.schoolym=B.schoolym,A.przwm=B.przwm,A.print_mc=B.print_mc,A.jzgmblc=B.jzgmblc,A.bzmc=B.bzmc,A.cszymc=B.cszymc,A.gwmc=B.gwmc,A.yxdm_academic=B.yxdm_academic,A.yjfx=B.yjfx,A.rylbmc=B.rylbmc,A.organname=B.organname,A.kpresult=B.kpresult,A.xlmc=B.xlmc,A.xwmc=B.xwmc,A.lxhg=B.lxhg,A.mzdm=B.mzdm,A.mzmc=B.mzmc,A.rylbm=B.rylbm,A.jzglbm=B.jzglbm,A.gwm=B.gwm,A.bzm=B.bzm,A.startym=B.startym,A.pyht=B.pyht,A.GJM=B.GJM,A.ZJM=B.ZJM,A.usertype=B.usertype,A.updateDate=B.updateDate,A.is_txfp=B.is_txfp,A.major_level_no=B.major_level_no,A.major_level=B.major_level,A.xzzw=B.xzzw,A.xnprgw=B.xnprgw,A.team_day_5=B.team_day_5,A.team_count_5=B.team_count_5,A.ryztm=B.ryztm,A.txrq=B.txrq,A.lxrq=B.lxrq,A.zwzj=B.zwzj,A.jaccount=B.jaccount,A.gjmc=B.gjmc,A.work_date=B.work_date,A.age=B.age,A.place_origin=B.place_origin,A.partisan_assemble=B.partisan_assemble,A.joinym=B.joinym,A.graduate_school=B.graduate_school,A.contract_enddate=B.contract_enddate,A.job_startdate=B.job_startdate,A.job_enddate=B.job_enddate,A.staff_rank=B.staff_rank,A.staff_rank_date=B.staff_rank_date,A.title_rank=B.title_rank,A.title_rank_date=B.title_rank_date,A.marital_status=B.marital_status,A.home_address=B.home_address,A.title_date=B.title_date,A.phone=B.phone,A.SWRQ=B.SWRQ,A.print_jz=B.print_jz,A.przwm_jz=B.przwm_jz,A.hgny=B.hgny,A.first_contract_startym=B.first_contract_startym,A.first_contract_endym=B.first_contract_endym;
+
+		            insert into sams_data.teacher_info_all_adl (userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,organname,kpresult,xlmc,xwmc,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym)
+		            select userid,name,birthdate,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,schoolym,przwm,print_mc,jzgmblc,bzmc,cszymc,gwmc,yxdm_academic,yjfx,rylbmc,organname,kpresult,xlmc,xwmc,lxhg,mzdm,mzmc,rylbm,jzglbm,gwm,bzm,startym,pyht,GJM,ZJM,usertype,updateDate,is_txfp,major_level_no,major_level,xzzw,xnprgw,team_day_5,team_count_5,ryztm,txrq,lxrq,zwzj,jaccount,gjmc,work_date,age,place_origin,partisan_assemble,joinym,graduate_school,contract_enddate,job_startdate,job_enddate,staff_rank,staff_rank_date,title_rank,title_rank_date,marital_status,home_address,title_date,phone,SWRQ,print_jz,przwm_jz,hgny,first_contract_startym,first_contract_endym
+		            from sams_data.tmp_teacher_info_all_adl
+		            where not exists (select * from sams_data.teacher_info_all_adl B where sams_data.tmp_teacher_info_all_adl.userid=B.userid  );
+		            drop table sams_data.tmp_teacher_info_all_adl;
+		        end if;
+		    end if;
+		IF EXCEPTION = 1 THEN
+			ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','1',now(),'执行失败');
+		ELSE
+			COMMIT;
+				insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('2','P_Teacher_Info','0',now(),'执行成功');
+		END IF;
+END

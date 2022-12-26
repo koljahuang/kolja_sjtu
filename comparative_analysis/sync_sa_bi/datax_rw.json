@@ -1,0 +1,43 @@
+{
+    "job": {
+        "content": [
+            {
+                "reader": {
+                    "name": "mysqlreader",
+                    "parameter": {
+                        "column": ["*"],
+                        "connection": [
+                            {
+                                "jdbcUrl": ["jdbc:mysql://${sa_host}:${sa_port}/sams_bak?useUnicode=true&characterEncoding=utf8"],
+                                "table": ["${tbl}"]
+                            }
+                        ],
+                        "password": "${sa_pwd}",
+                        "username": "${sa_user}"
+                    }
+                },
+                "writer": {
+                    "name": "mysqlwriter",
+                    "parameter": {
+                        "column": ["*"],
+                        "connection": [
+                            {
+                                "jdbcUrl": "jdbc:mysql://${bi_host}:${bi_port}/sams_bak?useUnicode=true&characterEncoding=utf8",
+                                "table": ["${tbl}"]
+                            }
+                        ],
+                        "password": "${bi_pwd}",
+                        "username": "${bi_user}",
+                        "writeMode": "insert"
+                    }
+                }
+            }
+        ],
+        "setting": {
+            "speed": {
+                "channel": "1",
+                "record": 5000
+            }
+        }
+    }
+}

@@ -1,0 +1,8 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `xkpg_teacher_mx`(IN superiorfacultycode1 VARCHAR(255), IN superiorfaculty1 VARCHAR(255),
+                                                 IN major_level1_no1 VARCHAR(255), IN major_level1_1 VARCHAR(255),
+                                                 IN gh1 VARCHAR(255), IN round_id1 VARCHAR(255), IN ml_id1 VARCHAR(255))
+    COMMENT '学科评估-教师明细表刷新'
+BEGIN
+    UPDATE sams_data.xkpg_teacher_info_mx mx SET mx.superiorfacultycode=superiorfacultycode1,mx.superiorfaculty=superiorfaculty1,
+      mx.major_level1_no=major_level1_no1,mx.major_level1=major_level1_1,mx.round_id=round_id1,mx.ml_id=ml_id1 WHERE mx.gh IN (gh1);
+END

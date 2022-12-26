@@ -1,0 +1,226 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_pjpf_info`(IN `v_xn` varchar(20),IN `v_xq` varchar(20))
+BEGIN
+	#Routine body goes here...
+	
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+		-- 评教评分信息表
+		
+		
+		CREATE TEMPORARY TABLE sams_data.tmp_pjpf_info like sams_data.pjpf_info;
+		
+		insert into sams_data.tmp_pjpf_info(uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx)
+		select * from   -- 本科生
+		(select uuid(),jb.rscgh,jb.xm ,kc.kcmc ,ifnull(dr.xqxs,dr.zxs)
+		,case when dr.xq='1' then SUBSTRING(dr.xn,1,4)+'.09' else RIGHT(dr.xn,4)+'.02' end
+		,case when dr.xq='1' then RIGHT(dr.xn,4)+'.01' else RIGHT(dr.xn,4)+'.08' end
+		,dr.qsz ,dr.jsz ,dr.ZHXS ,dr.xqxs,ifnull(dr.zxs,dr.xqxs),dr.KTXS,dr.SYXS,dr.QTXS
+		,dr.xn,dr.xq
+		,'本科生' as tkdx,dr.XKRS,null
+		,if(e.bj_X is null,'',e.bj_X) ,if(e.ifvalid is null,'',e.ifValid)
+		,dr.kcdm,if(dr.bz is null,'',dr.bz),zk.bsid
+		,if(dr.xqxf is null,'',dr.xqxf),dr.KH,null bj,null kcxz,null skyy,dr.yxdm
+		from sams_factdata.JX_DRZK zk
+		inner join sams_factdata.JX_JSDRK dr on zk.bsid=dr.bsid
+		left join (select distinct gh,rscgh,xm,id from sams_factdata.JX_JSJBK) jb on zk.jgh_id=jb.id
+		left join sams_factdata.KCMCDMK kc on dr.kcdm=kc.kcdm
+		left join sams_factdata.entj_drzk_1_ifValid e on zk.bsid=e.bsid and zk.gh=e.jsgh
+		where  zk.scbj='N' and PKBZ='是' and zk.bsid in (select distinct bsid from sams_factdata.JX_JSDRK )  and dr.xn=v_xn and dr.xq=v_xq
+		order by jb.rscgh,dr.xn,dr.xq) as a
+		union
+ 		select * from  -- 研究生
+		(select uuid(),A.rkjszgh ,A.rkls ,A.kcmc ,ifnull(B.xs,A.zxs) zxs
+		,case SUBSTRING(A.XQDM,5,2) when '02' then SUBSTRING(A.XQDM,1,4)+'.02'
+		when '06' then SUBSTRING(A.XQDM,1,4)+'.02'
+		when '09' then SUBSTRING(A.XQDM,1,4)+'.09'
+		else A.xqdm end
+		,case SUBSTRING(A.XQDM,5,2) when '02' then SUBSTRING(A.XQDM,1,4)+'.08'
+		when '06' then SUBSTRING(A.XQDM,1,4)+'.08'
+		when '09' then cast(SUBSTRING(A.XQDM,1,4) as int)+1+'.01' else A.xqdm end
+		,0  as qsz,0 as jsz ,0 as weekxss ,ifnull(B.xs,A.zxs) as xqxss,ifnull(B.xs,A.zxs)  as totalxss,0 as ktxs,0 as syxs,0 as qtxs
+		,case SUBSTRING(XQDM,5,2) when '02' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',+SUBSTRING(A.XQDM,1,4))
+		when '06' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',SUBSTRING(A.XQDM,1,4))
+		when '09' then concat(SUBSTRING(A.XQDM,1,4),'-',(cast(SUBSTRING(A.XQDM,1,4) as int)+1)) else A.xqdm end as xn
+		,case SUBSTRING(A.XQDM,5,2) when '02' then '2' when '06' then '2' when '09' then '1' else A.xqdm end as xq
+		,'研究生' as tkdx,ifnull(B.xkrs,A.xkrs) xkrs, B.sjcdks as brcdks,null as pkf,null as isvalid
+		,A.kcdm,A.fjls as bz,A.kcdm bsid
+		,ifnull(B.xf,A.kcxf)   xqmf,A.kcdm KH,A.BJMC,A.kcxz,case when A.SKYY in('全中文(1)','无(0)') then '中文' when A.SKYY in('全英文(2)','其它语言(5)') then '外语' when A.SKYY in('英文为主、中文为辅(4)','中文为主、英文为辅(3)') then '双语' else '' end as SKYY,A.kkyx
+		from  sams_factdata.TJGL_KCXXTJ_RKJS A 
+		left join sams_factdata.TJGL_KCXXTJ_RKJS_GRKS B on A.bjdm=B.bjdm and A.rkjszgh=B.gh
+		where A.XQDM not like '____06' and (case SUBSTRING(XQDM,5,2) when '02' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',+SUBSTRING(A.XQDM,1,4))
+		when '06' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',SUBSTRING(A.XQDM,1,4))
+		when '09' then concat(SUBSTRING(A.XQDM,1,4),'-',(cast(SUBSTRING(A.XQDM,1,4) as int)+1)) else A.xqdm end)=v_xn and 
+		(case SUBSTRING(A.XQDM,5,2) when '02' then '2' when '06' then '2' when '09' then '1' else A.xqdm end)=v_xq
+		) as b; 
+				
+	  insert into	sams_data.pjpf_info (uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx)
+		select uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx from sams_data.tmp_pjpf_info AA where xn=v_xn and xq=v_xq and tkdx='本科生' and not exists(select * from sams_data.pjpf_info BB where AA.bsid=BB.bsid and AA.tkdx=BB.tkdx  and AA.rscgh=BB.rscgh); 
+		
+		insert into	sams_data.pjpf_info (uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx)
+		select uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx from sams_data.tmp_pjpf_info AA where xn=v_xn and xq=v_xq and tkdx='研究生' and not exists(select * from sams_data.pjpf_info BB where AA.bj=BB.bj and AA.tkdx=BB.tkdx  and AA.rscgh=BB.rscgh); 
+		
+		
+		delete from sams_data.pjpf_info
+		where not exists (select * from sams_data.tmp_pjpf_info B where  sams_data.pjpf_info.bj=B.bj and sams_data.pjpf_info.tkdx=B.tkdx  and sams_data.pjpf_info.rscgh=B.rscgh ) and xn=v_xn and xq=v_xq and tkdx='研究生';
+		
+		delete from sams_data.pjpf_info
+		where not exists (select * from sams_data.tmp_pjpf_info B where  sams_data.pjpf_info.bsid=B.bsid and sams_data.pjpf_info.tkdx=B.tkdx and sams_data.pjpf_info.rscgh=B.rscgh ) and xn=v_xn and xq=v_xq and tkdx='本科生';
+		
+		update sams_data.pjpf_info A
+		inner join sams_data.tmp_pjpf_info B on A.bj=B.bj and A.tkdx=B.tkdx and A.rscgh=B.rscgh
+		set  A.xm=B.xm,A.kcmc=B.kcmc,A.kczxs=B.kczxs,A.jkksny=B.jkksny,A.jkzzny=B.jkzzny,A.qsz=B.qsz,A.jsz=B.jsz,A.weekxss=B.weekxss,A.xqxss=B.xqxss,A.totalxss=B.totalxss,
+		A.ktxs=B.ktxs,A.syxs=B.syxs,A.qtxs=B.qtxs,A.xn=B.xn,A.xq=B.xq,A.tkrs=B.tkrs,A.brcdks=B.brcdks,A.pkf=B.pkf,A.isvalid=B.isvalid,A.kcdm=B.kcdm,A.bz=B.bz,
+		A.xqmf=B.xqmf,A.kh=B.kh,A.kcxz=B.kcxz,A.skyy=B.skyy,A.kkyx=B.kkyx
+		where A.xn=v_xn and A.xq=v_xq and A.tkdx='研究生' ;
+		
+				update sams_data.pjpf_info A
+		inner join sams_data.tmp_pjpf_info B on A.bsid=B.bsid and A.tkdx=B.tkdx and A.rscgh=B.rscgh
+		set  A.xm=B.xm,A.kcmc=B.kcmc,A.kczxs=B.kczxs,A.jkksny=B.jkksny,A.jkzzny=B.jkzzny,A.qsz=B.qsz,A.jsz=B.jsz,A.weekxss=B.weekxss,A.xqxss=B.xqxss,A.totalxss=B.totalxss,
+		A.ktxs=B.ktxs,A.syxs=B.syxs,A.qtxs=B.qtxs,A.xn=B.xn,A.xq=B.xq,A.tkrs=B.tkrs,A.brcdks=B.brcdks,A.pkf=B.pkf,A.isvalid=B.isvalid,A.kcdm=B.kcdm,A.bz=B.bz,
+		A.xqmf=B.xqmf,A.kh=B.kh,A.kcxz=B.kcxz,A.skyy=B.skyy,A.kkyx=B.kkyx
+		where A.xn=v_xn and A.xq=v_xq and A.tkdx='本科生' ;
+
+
+				drop table sams_data.tmp_pjpf_info;
+				
+-- 		delete from sams_data.pjpf_info where xn=v_xn and xq=v_xq;
+-- 		-- truncate sams_data.pjpf_info;
+-- 		insert into sams_data.pjpf_info(uuid,rscgh,xm,kcmc,kczxs,jkksny,jkzzny,qsz,jsz,weekxss,xqxss,totalxss,ktxs,syxs,qtxs,xn,xq,tkdx,tkrs,brcdks,pkf,isvalid,kcdm,bz,bsid,xqmf,kh,bj,kcxz,skyy,kkyx)
+-- 		select * from   -- 本科生
+-- 		(select uuid(),jb.rscgh,jb.xm ,kc.kcmc ,ifnull(dr.xqxs,dr.zxs)
+-- 		,case when dr.xq='1' then SUBSTRING(dr.xn,1,4)+'.09' else RIGHT(dr.xn,4)+'.02' end
+-- 		,case when dr.xq='1' then RIGHT(dr.xn,4)+'.01' else RIGHT(dr.xn,4)+'.08' end
+-- 		,dr.qsz ,dr.jsz ,dr.ZHXS ,dr.xqxs,ifnull(dr.zxs,dr.xqxs),dr.KTXS,dr.SYXS,dr.QTXS
+-- 		,dr.xn,dr.xq
+-- 		,'本科生' as tkdx,dr.XKRS,null
+-- 		,if(e.bj_X is null,'',e.bj_X) ,if(e.ifvalid is null,'',e.ifValid)
+-- 		,dr.kcdm,if(dr.bz is null,'',dr.bz),zk.bsid
+-- 		,if(dr.xqxf is null,'',dr.xqxf),dr.KH,dr.tkbj,null kcxz,null skyy,dr.yxdm
+-- 		from sams_factdata.JX_DRZK zk
+-- 		inner join sams_factdata.JX_JSDRK dr on zk.bsid=dr.bsid
+-- 		left join (select distinct gh,rscgh,xm,id from sams_factdata.JX_JSJBK) jb on zk.jgh_id=jb.id
+-- 		left join sams_factdata.KCMCDMK kc on dr.kcdm=kc.kcdm
+-- 		left join sams_factdata.entj_drzk_1_ifValid e on zk.bsid=e.bsid and zk.gh=e.jsgh
+-- 		where  zk.scbj='N' and PKBZ='是' and zk.bsid in (select distinct bsid from sams_factdata.JX_JSDRK )  and dr.xn='2019-2020' and dr.xq='2'
+-- 		order by jb.rscgh,dr.xn,dr.xq) as a
+-- 		union
+--  		select * from  -- 研究生
+-- 		(select uuid(),A.rkjszgh ,A.rkls ,A.kcmc ,ifnull(B.xs,A.zxs) zxs
+-- 		,case SUBSTRING(A.XQDM,5,2) when '02' then SUBSTRING(A.XQDM,1,4)+'.02'
+-- 		when '06' then SUBSTRING(A.XQDM,1,4)+'.02'
+-- 		when '09' then SUBSTRING(A.XQDM,1,4)+'.09'
+-- 		else A.xqdm end
+-- 		,case SUBSTRING(A.XQDM,5,2) when '02' then SUBSTRING(A.XQDM,1,4)+'.08'
+-- 		when '06' then SUBSTRING(A.XQDM,1,4)+'.08'
+-- 		when '09' then cast(SUBSTRING(A.XQDM,1,4) as int)+1+'.01' else A.xqdm end
+-- 		,0  as qsz,0 as jsz ,0 as weekxss ,ifnull(B.xs,A.zxs) as xqxss,ifnull(B.xs,A.zxs)  as totalxss,0 as ktxs,0 as syxs,0 as qtxs
+-- 		,case SUBSTRING(XQDM,5,2) when '02' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',+SUBSTRING(A.XQDM,1,4))
+-- 		when '06' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',SUBSTRING(A.XQDM,1,4))
+-- 		when '09' then concat(SUBSTRING(A.XQDM,1,4),'-',(cast(SUBSTRING(A.XQDM,1,4) as int)+1)) else A.xqdm end as xn
+-- 		,case SUBSTRING(A.XQDM,5,2) when '02' then '2' when '06' then '2' when '09' then '1' else A.xqdm end as xq
+-- 		,'研究生' as tkdx,ifnull(B.xkrs,A.xkrs) xkrs, B.sjcdks as brcdks,null as pkf,null as isvalid
+-- 		,A.kcdm,A.fjls as bz,A.kcdm bsid
+-- 		,ifnull(B.xf,A.kcxf)   xqmf,A.kcdm KH,A.BJMC,A.kcxz,case when A.SKYY in('全中文(1)','无(0)') then '中文' when A.SKYY in('全英文(2)','其它语言(5)') then '外语' when A.SKYY in('英文为主、中文为辅(4)','中文为主、英文为辅(3)') then '双语' else '' end as SKYY,A.kkyx
+-- 		from  sams_factdata.TJGL_KCXXTJ_RKJS A 
+-- 		left join sams_factdata.TJGL_KCXXTJ_RKJS_GRKS B on A.bjdm=B.bjdm and A.rkjszgh=B.gh
+-- 		where A.XQDM not like '____06' and (case SUBSTRING(XQDM,5,2) when '02' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',+SUBSTRING(A.XQDM,1,4))
+-- 		when '06' then concat((cast(SUBSTRING(XQDM,1,4) as int)-1),'-',SUBSTRING(A.XQDM,1,4))
+-- 		when '09' then concat(SUBSTRING(A.XQDM,1,4),'-',(cast(SUBSTRING(A.XQDM,1,4) as int)+1)) else A.xqdm end)=v_xn and 
+-- 		(case SUBSTRING(A.XQDM,5,2) when '02' then '2' when '06' then '2' when '09' then '1' else A.xqdm end)=v_xq
+-- 		) as b; 
+-- 		
+		delete from  sams_data.pjpf_info  where bj in (select bjdm from sams_factdata.TJGL_KCXXTJ_RKJS_GRKS A where A.kcfl='非全日制课程') and xn=v_xn and xq=v_xq;
+		
+		delete from sams_data.pjpf_info where rscgh='09583' and kcmc='新形势下前沿热点与产业形势解析(MY26014)' and tkrs=0;
+		delete from sams_data.pjpf_info  where bj='X033517180903300X01';		
+		update sams_data.pjpf_info  set jkksny='2016.07',jkzzny='2016.07',tkrs='12',brcdks='6' where bsid='374369' and rscgh='10819';
+		delete from sams_data.pjpf_info where bj='P03351114090330001' and rscgh='10892' ;
+		delete from sams_data.pjpf_info where bj='C03472806091' and rscgh='09601';
+		delete from  sams_factdata.TJGL_KCXXTJ_RKJS where RKJSZGH='09601' and bjdm='C03472806091' ;
+		
+		-- 刷新本科课程类别
+		update sams_data.pjpf_info A 
+inner join sams_factdata.BK_KCLB B on A.kcdm=B.`课程代码`
+set A.kcxz=B.匹配1
+where xn=v_xn and xq=v_xq;
+		update sams_data.pjpf_info set skyy='外语'  where bz like '%英语%' or bz like '%日语%' or bz like '%外语%' and xn=v_xn and xq=v_xq; 
+		update sams_data.pjpf_info set skyy='双语'  where bz like '%双语%'and xn=v_xn and xq=v_xq; 
+		
+		update sams_data.pjpf_info set skyy='中文'  where skyy is null and xn=v_xn and xq=v_xq; 
+		update sams_data.pjpf_info A set ssrs=(select count(*) from  sams_factdata.JX_XSXKK B  
+		inner join sams_factdata.xs_xsjbk C on B.xh=C.xh and C.SCBJ='N' where  B.SJLY='60300' and C.pyccm='2' and A.bj=B.bsid  )
+		where A.tkdx='研究生' and A.xn=v_xn and A.xq=v_xq; 
+		update sams_data.pjpf_info A set bsrs=(select count(*) from  sams_factdata.JX_XSXKK B  
+		inner join sams_factdata.xs_xsjbk C on B.xh=C.xh and C.SCBJ='N' where  B.SJLY='60300' and C.pyccm='1' and A.bj=B.bsid  )
+		where A.tkdx='研究生' and A.xn=v_xn and A.xq=v_xq; 
+		-- 更新是否单独上课到sfddsk字段
+		update sams_data.pjpf_info A set sfddsk='1' where A.tkdx='本科生' and uuid in (select uuid from sams_data.pjpf_info A where A.tkdx='本科生' group by bsid having count(*)=1)
+		and A.xn=v_xn and A.xq=v_xq;
+		-- update sams_data.pjpf_info A set sfddsk='0' where A.tkdx='本科生' and bsid in (select bsid from sams_data.pjpf_info A where A.tkdx='本科生' group by bsid having count(*)>1);
+		update sams_data.pjpf_info A set sfddsk='0' where A.tkdx='本科生' and sfddsk is null  and A.xn=v_xn and A.xq=v_xq;
+		
+		update sams_data.pjpf_info A set sfddsk='1' where A.tkdx='研究生' and uuid in (select uuid from sams_data.pjpf_info A where A.tkdx='研究生' group by bj having count(*)=1)
+		 and A.xn=v_xn and A.xq=v_xq;
+		-- update sams_data.pjpf_info A set sfddsk='0' where A.tkdx='研究生' and bj in (select bj from sams_data.pjpf_info A where A.tkdx='研究生' group by bj having count(*)>1);
+		update sams_data.pjpf_info A set sfddsk='0' where A.tkdx='研究生' and sfddsk is null  and A.xn=v_xn and A.xq=v_xq; 
+		
+		-- 根据sams_factdata.JX_XSXKK更新实际听课人数tkrs
+		update sams_data.pjpf_info a inner join (select count(distinct xh) as tkrs, bsid from sams_factdata.JX_XSXKK where sjly='60200' group by bsid) b on a.bsid=b.bsid set a.tkrs=b.tkrs where a.tkdx='本科生';
+		
+		--  pjpf_info生产库增加字段   本人承担学分brcdxf decimal(6,2) 
+
+-- 根据JX_DRZK的个人学时jsgzl同步pjpf_info中的本人承担课时brcdks
+update sams_data.pjpf_info a inner join (select  bsid, gh, jsgzl from sams_factdata.JX_DRZK where scbj='N' ) b on a.bsid=b.bsid and a.rscgh=b.gh set a.brcdks=b.jsgzl where a.tkdx='本科生';
+
+-- “个人学时“为空，独立授课=1/空（是），则批量覆盖为总学时
+update sams_data.pjpf_info set brcdks=kczxs where brcdks is null and (sfddsk is null or sfddsk='1');
+
+-- 批量刷新历史数据的 “个人学分” =  个人学时*课程总学分/总学时
+update sams_data.pjpf_info set brcdxf=brcdks*xqmf/kczxs where brcdks is not null and kczxs is not null and xqmf is not null and (kczxs+0.00<>0.00) and brcdks<>'' and kczxs<>'' and  xqmf<>'';
+
+		
+		-- 更新课程安排到sksj字段
+		update sams_data.pjpf_info A
+		inner join sams_factdata.JX_PKXX B on A.bsid=B.bsid  
+		set A.sksj=B.sksj
+		where A.tkdx='本科生' and B.SJLY='60200'  and A.xn=v_xn and A.xq=v_xq ;
+		update sams_data.pjpf_info A
+		inner join sams_factdata.JX_PKXX B on A.bj=B.bsid  
+		set A.sksj=B.sksj
+		where A.tkdx='研究生' and B.SJLY='60300'  and A.xn=v_xn and A.xq=v_xq;
+		-- 20191112
+		delete  from sams_data.pjpf_info where rscgh='11069' and bj in ('IE26027180226000M01','IE26052180926000M01','IE26027190226000M01','IE26052190926000M01');
+		
+		-- 2020-04-10 根据JX_GRDRK更新本科课程个人承担学时
+		UPDATE sams_data.`pjpf_info` a LEFT JOIN sams_factdata.`JX_GRDRK` b ON a.bsid = b.bsid AND a.rscgh = b.userid  
+                SET a.`bz` = CASE WHEN b.`bz` IS NOT NULL AND LENGTH(b.`bz`) > 0 THEN b.`bz` ELSE a.`bz` END,
+                a.brcdks = CASE WHEN b.grxs IS NOT NULL AND LENGTH(b.grxs) > 0 THEN  b.grxs ELSE a.brcdks END
+                WHERE b.bsid IS NOT NULL AND b.userid IS NOT NULL AND a.tkdx='本科生';
+		-- 根据JX_GRDRK的scbj删除标记，删除本科课程
+                delete from sams_data.pjpf_info where uuid in (select c.id from  
+                (select b.uuid id from sams_factdata.`JX_GRDRK` a 
+                join sams_data.`pjpf_info` b on a.bsid = b.bsid AND b.rscgh = a.userid
+                where a.scbj='Y' and b.tkdx='本科生') c);
+		-- 根据JX_GRDRK更新研究生课程个人承担学时
+                UPDATE sams_data.`pjpf_info` a LEFT JOIN sams_factdata.`JX_GRDRK` b ON a.bj = b.bsid AND a.rscgh = b.userid  
+                SET a.`bz` = case when b.`bz` is not null and length(b.`bz`) > 0 then b.`bz` else a.`bz` end,
+                a.brcdks = CASE WHEN b.grxs IS NOT NULL AND LENGTH(b.grxs) > 0 THEN  b.grxs ELSE a.brcdks END
+                WHERE b.bsid IS NOT NULL AND b.userid IS NOT NULL AND a.tkdx='研究生';
+		-- 根据JX_GRDRK的scbj删除标记，删除研究生课程
+                DELETE FROM sams_data.pjpf_info WHERE UUID IN (SELECT c.id FROM  
+                (SELECT b.uuid id FROM sams_factdata.`JX_GRDRK` a 
+                JOIN sams_data.`pjpf_info` b ON a.bsid = b.bj AND b.rscgh = a.userid
+                WHERE a.scbj='Y' AND b.tkdx='研究生') c);
+		
+		-- 更新多人任课的教师姓名进rkjs字段
+		update sams_data.pjpf_info AA
+		inner join (select uuid, group_concat(xm) rkjs  from sams_data.pjpf_info A where A.tkdx='本科生' group by bsid having count(*)>1) BB on AA.uuid=BB.uuid
+		set AA.rkjs=BB.rkjs
+		where  AA.xn=v_xn and AA.xq=v_xq;
+		update sams_data.pjpf_info AA
+		inner join (select uuid, group_concat(xm) rkjs  from sams_data.pjpf_info A where A.tkdx='研究生' group by bj having count(*)>1) BB on AA.uuid=BB.uuid
+		set AA.rkjs=BB.rkjs
+		where  AA.xn=v_xn and AA.xq=v_xq;
+
+END

@@ -1,0 +1,65 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Teacher_milestone`()
+BEGIN
+  #Routine body goes here...
+	
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+			-- 教师里程碑信息表
+
+			truncate sams_data.teacher_milestone_adl;
+			truncate sams_data.teacher_milestone_adl;
+			insert into sams_data.teacher_milestone_adl(id,userid,name,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,workym,schoolym,jobstatus,przwm,sp_prny,mc,wid,xmbh,xmmc,xmlb,xmjb,ksrq
+,hjxm,bjdw,bjrq,rychm,bz,bfdw,jlrymc,hryny,stkrq,totalkss,updateDate)
+			select uuid(),a.userid,name_cert,gender,faculty,facultycode,superiorfaculty,superiorfacultycode,workym,schoolym,jobstatus,b.przwm,b.sp_prny,b.mc,
+			WID,XMBH,ZKTMC,XMLB,XMEJLB,c.KSRQ,
+			d.hjxm,d.bjdw,d.bjrq,0 as rychm,e.comment,e.unit,e.honorarytitle,e.honorarytitledate,0,totalkss,curdate()
+			from sams.hr_basic a   -- 人员基本信息表
+			left join (select rscgh,sum(ifnull(totalxss,xqxss)) as totalkss from sams_data.pjpf_info pj group by rscgh) pj
+			on a.userid=pj.rscgh
+			left join
+			(select a.gh as gh,a.przwm,a.sp_prny,b.mc from
+			(
+			select gh,przwm,min(prny) as sp_prny from sams_factdata.zyzwk
+			where gh is not null and xh > 0 and qr = 2 and sfxr = '是' and  sfxp = '首聘'
+			group by gh
+			) a
+			join sams_factdata.dm_gb8561 as b
+			on a.przwm = b.dm
+			)b  -- 获取教师专业职务
+			on a.userid=b.gh
+			left join
+			(
+			select XMFZRGH,WID,XMBH,ZKTMC,XMLB,XMEJLB,min(KSRQ) as KSRQ
+			from sams_factdata.t_ky_xmzkt
+			group by XMFZRGH
+			) c   -- 获取教师项目子课题
+			on a.userid=c.XMFZRGH
+			left join
+			(
+			select gh,hjxm,bjdw,min(bjrq) as bjrq
+			from  sams_factdata.JILK
+			where gh is not null and xh>0 and qr=2
+			group by gh
+			) d
+			on a.userid=d.gh -- 获取奖励类库，奖励信息不全
+			left join
+			(
+			select userid,comment,unit,honorarytitle,min(honorarytitledate) as honorarytitledate
+			from  sams.hr_awards
+			where userid is not null and scbj='N'
+			group by userid
+			) e
+			on a.userid=e.userid  -- 	获奖表，数据不全hr_awards
+			where a.userType='C' and a.scbj='N' ;
+			
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('10','P_Teacher_milestone','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('10','P_Teacher_milestone','0',now(),'执行成功');
+	END IF;				
+	
+END

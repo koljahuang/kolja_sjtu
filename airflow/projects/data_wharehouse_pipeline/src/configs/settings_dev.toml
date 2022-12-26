@@ -1,0 +1,8 @@
+[dev]
+
+LOG_NAME = 'dt_wharehouse_pipe'
+LOG_LEVEL = 'debug'
+BDP_MYSQL_DB = 'sjtu_bdp'
+BDP_MYSQL_INSTANCE = 'dbp_mysql_instance'
+BDP_HIVE_META_INSTANCE = 'dbp_hive_meta_instance'
+ENABLE_DISTRIBUTED_LOCK = true

@@ -1,0 +1,61 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_assess_title_assessment`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断人事处表是否有更新信息
+	if ((select count(*) from sams.hr_assessment)<70000) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('19','Update_assess_title_assessment','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('19','Update_assess_title_assessment','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+
+        #create temporary table data_test.assess_title_assessment like sams_assess.assess_title_assessment;
+        #insert into data_test.assess_title_assessment(id, task_id, user_id, honor_name, grant_date, grant_org)
+        #select uuid(),
+        #       b.task_id,
+        #       a.userid,
+        #       if(a.type='0','聘期考核优秀','年度考核优秀') as honor_name,
+        #       group_concat(a.assessmentyear order by assessmentyear) as grant_date,
+        #       '上海交通大学' as grant_org
+        #from sams.hr_assessment a
+        #inner join (select user_id,current_title_date,task_id from sams_assess.assess_member_list where task_id='202008313e29c0dc75b4' group by user_id) b
+        #on a.userid=b.user_id
+        #where b.current_title_date<=a.assessmentyear and a.result='优秀'
+        #group by a.userid, a.type;
+#
+		#delete from sams_assess.assess_title_assessment
+		#where not exists (
+		#    select * from data_test.assess_title_assessment B
+		#    where sams_assess.assess_title_assessment.user_id=B.user_id
+		#    and sams_assess.assess_title_assessment.honor_name=B.honor_name);
+#
+		#update sams_assess.assess_title_assessment A
+		#inner join data_test.assess_title_assessment B
+		#on A.user_id=B.user_id and A.honor_name=B.honor_name
+		#set A.grant_date=B.grant_date
+        #where A.user_id is not null;
+#
+		#insert into sams_assess.assess_title_assessment(id, task_id, user_id, honor_name, grant_date, grant_org, create_time, update_time)
+        #select id, task_id, user_id, honor_name, grant_date, grant_org, create_time, update_time
+		#from data_test.assess_title_assessment
+		#where not exists (
+		#    select * from sams_assess.assess_title_assessment B
+		#    where data_test.assess_title_assessment.user_id=B.user_id
+		#    and data_test.assess_title_assessment.honor_name=B.honor_name);
+        #drop temporary table data_test.assess_title_assessment;
+
+	    IF EXCEPTION = 1 THEN
+	        ROLLBACK;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('19','Update_assess_title_assessment','1',now(),'执行失败');
+	    ELSE
+	        COMMIT;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('19','Update_assess_title_assessment','0',now(),'执行成功');
+	    END IF;
+    end if;
+END

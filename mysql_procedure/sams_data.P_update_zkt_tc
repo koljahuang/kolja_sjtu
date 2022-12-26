@@ -1,0 +1,33 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_update_zkt_tc`(IN v_year varchar(4), IN v_jfkkh varchar(100),
+                                                           IN v_userid varchar(20), IN v_mode varchar(10),
+                                                           IN v_rate decimal(20, 6))
+BEGIN
+	DECLARE p_total_kgje DECIMAL(20,6);
+	DECLARE p_total_dkje DECIMAL(20,6);
+	DECLARE p_total_mkje DECIMAL(20,6);
+	DECLARE p_ystc DECIMAL(20,2);
+	SELECT IFNULL(SUM(p_kgje), 0),IFNULL(SUM(p_dkje), 0),IFNULL(SUM(p_mkje), 0) INTO p_total_kgje, p_total_dkje, p_total_mkje
+	FROM sams_data.`zkt_cw_fp` WHERE p_syear = v_year AND jfkkh = v_jfkkh AND gh = v_userid AND (p_id IS NULL OR p_id = '') AND jfkkh <> 'SA0302631';
+	IF p_total_kgje > 0
+	THEN
+		CASE v_mode
+		WHEN 'STATIC'
+		THEN SET p_ystc = ROUND(v_rate,2);
+		WHEN 'PERCENT'
+		THEN SET p_ystc = ROUND(p_total_kgje*100*v_rate);
+		ELSE SET p_ystc = 0;
+		END CASE;
+		
+		IF EXISTS(SELECT 1 FROM zkt_tcf WHERE gh = v_userid AND jfkkh = v_jfkkh AND p_syear=CAST(v_year AS SIGNED)+1)
+		THEN
+		UPDATE sams_data.zkt_tcf SET dkje = p_total_dkje, mkje = p_total_mkje, kgje = p_total_kgje, ys_tcje = case when is_edit = 0 then p_ystc else ys_tcje end, 
+		pay_status = CASE WHEN ys_tcje = 0 THEN 'FREE' WHEN ss_tcje = 0 THEN 'UNPAID' WHEN ss_tcje >= p_ystc THEN 'PAID' ELSE 'PAID_HALF' END
+		WHERE gh = v_userid AND jfkkh = v_jfkkh AND p_syear=CAST(v_year AS SIGNED)+1;
+		ELSE 
+		INSERT INTO zkt_tcf(gh, NAME, dkje, mkje, kgje, superiorfacultycode, facultycode, jfkkh, xmbh, xmmc, p_syear, xmfl, ys_tcje, p_gh, p_name, payer_id, payer, pay_status) 
+		(SELECT gh, `name`, p_total_dkje, p_total_mkje, p_total_kgje, superiorfacultycode, facultycode, jfkkh,  xmbh, xmmc,CAST(v_year AS SIGNED)+1, CASE WHEN xmfl LIKE '%横%' THEN '横向项目' WHEN xmfl LIKE '%纵%'  THEN '纵向项目' ELSE NULL END,
+		p_ystc, gh, `name`, gh, `name`, case when p_ystc = 0 THEN 'FREE' else 'UNPAID' end
+		FROM sams_data.`zkt_cw_fp` WHERE p_syear = v_year AND jfkkh = v_jfkkh AND gh = v_userid AND (p_id IS NULL OR p_id = '') LIMIT 1);
+		END IF;
+	END IF;
+    END

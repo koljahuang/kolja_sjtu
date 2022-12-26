@@ -1,0 +1,105 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `get_xkpg_award`(IN type int)
+    COMMENT '学科评估-查询获奖信息'
+begin
+    declare i int;
+    declare major_no varchar(30);
+    set i=0;
+    if type=1 then
+        while i<47 do
+            set major_no=(select major_level1_No from sams_factdata.xkpg_major where scbj='N' order by major_level1_No limit i,1);
+            insert into sams_xkpg_his.xkpg_award_tmp(id, major_level1_no, major_level1, xzqk, order_num, award_name, award_project, award_level,
+                                                     awardee, year, num_of_unit, ranking, num_of_major, proportion)
+            select uuid(),major_level1_No,major_level1,if(xzbj='Y','选中','未选中') xzqk,order_num,jlmc,jlxm,jldj,name,year,num_of_unit,ranking,num_of_major,proportion from (
+            (select a.id ,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,e.name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,c.superiorfacultycode,c.superiorfaculty,c.major_level1_No,c.major_level1,c.gh,a.data_source,a.source_dept,b.status
+            from sams_factdata.award_info a
+            inner join sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            inner join sams_factdata.xkpg_teacher_ryjd c on c.gh=b.gh and c.major_level1_No=major_no
+            left join sams_factdata.xkpg_teach_award d on d.ID_award=a.id and d.major_level1_No=major_no
+            left join (select jlid,group_concat(distinct xm ORDER BY xh) name from sams_factdata.award_stuff where 1=1 group by jlid) e on a.id=e.jlid
+            where 1=1 and a.jllx!='科研奖' and c.major_level1_No=major_no and a.scbj='N' and (d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' or d.round_id is null)
+            group by a.id order by year desc)
+            union
+            (select a.id ,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,group_concat(distinct b.xm ORDER BY b.xh) as name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,d.superiorfacultycode,d.superiorfaculty,d.major_level1_No,d.major_level1,b.gh,a.data_source,a.source_dept,b.status from sams_factdata.award_info a
+            inner join sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            left join sams_factdata.xkpg_teach_award d on d.ID_award=a.id where 1=1 and a.scbj='N' and d.major_level1_No=major_no
+            and (a.jllb in ('国家级教学成果奖','教育部研究生教育成果奖') or (a.jllb='研究生教育成果奖' and a.jljb='国家级'))
+            and a.jllx!='科研奖' and d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' group by a.id order by year desc)) c
+            where 1=1 and jllb in ('国家级教学成果奖','中国学位与研究生教育学会研究生教育成果奖','上海市教学成果奖','教学成果奖(上海市)')
+              and year>=(select left(starttime,4) from sams_factdata.xkpg_lc where state=1)
+              and year<=(select left(endtime,4) from sams_factdata.xkpg_lc where state=1) and status=77 group by id
+             order by xzbj desc,-order_num desc,field(jljb,'国家级','省部级','省级','部级','国际级','校级','其他'),
+            convert(jllb using gbk),field(jldj,'特等奖','一等奖','二等奖','三等奖','其他'),year desc;
+            set i=i+1;
+        end while;
+    elseif type=2 then
+        while i<47 do
+            set major_no=(select major_level1_No from sams_factdata.xkpg_major where scbj='N' order by major_level1_No limit i,1);
+            insert into sams_xkpg_his.xkpg_research_award_tmp_1(id, major_level1_no, major_level1, xzqk, order_num, award_name, award_project, award_level,
+                                                     awardee, year, num_of_unit, ranking, num_of_major, proportion)
+            select uuid(),major_level1_No,major_level1,if(xzbj='Y','选中','未选中') xzqk,order_num,jlmc,jlxm,jldj,name,year,num_of_unit,ranking,num_of_major,proportion from (
+            (select a.id ,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,e.name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,c.superiorfacultycode,c.superiorfaculty,c.major_level1_No,c.major_level1,c.gh,a.data_source,a.source_dept,b.status
+            from sams_factdata.award_info a
+            inner join  sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            inner join sams_factdata.xkpg_teacher_ryjd c on c.gh=b.gh and c.major_level1_No=major_no
+            left join sams_factdata.xkpg_research_award d on d.ID_award=a.id and d.major_level1_No=major_no
+            left join (select jlid,group_concat(distinct xm ORDER BY xh) name from sams_factdata.award_stuff where 1=1 group by jlid) e on a.id=e.jlid
+            where 1=1 and a.jllx='科研奖' and a.scbj='N' and (d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' or d.round_id is null) and c.major_level1_No=major_no
+            group by a.id order by year desc)
+            union
+            (select a.id,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,group_concat(distinct b.xm ORDER BY b.xh) as name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,d.superiorfacultycode,d.superiorfaculty,d.major_level1_No,d.major_level1,b.gh,a.data_source,a.source_dept,b.status from sams_factdata.award_info a
+            inner join sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            left join sams_factdata.xkpg_research_award d on d.ID_award=a.id where 1=1 and a.scbj='N' and d.major_level1_No=major_no and a.jllx='科研奖'
+            and d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' group by a.id order by year desc)) c
+            where 1=1 and jljb='国家级'
+              and year>=(select left(starttime,4) from sams_factdata.xkpg_lc where state=1)
+              and year<=(select left(endtime,4) from sams_factdata.xkpg_lc where state=1) and status=77 group by id
+             order by xzbj desc,-order_num desc,field(jljb,'国家级','省部级','省级','部级','国际级','校级','其他'),
+            convert(jllb using gbk),field(jldj,'特等奖','一等奖','二等奖','三等奖','其他'),year desc;
+            set i=i+1;
+        end while;
+    else
+        while i<47 do
+            set major_no=(select major_level1_No from sams_factdata.xkpg_major where scbj='N' order by major_level1_No limit i,1);
+            insert into sams_xkpg_his.xkpg_research_award_tmp_2(id, major_level1_no, major_level1, xzqk, order_num, award_name, award_project, award_level,
+                                                     awardee, year, num_of_unit, ranking, num_of_major, proportion)
+            select uuid(),major_level1_No,major_level1,if(xzbj='Y','选中','未选中') xzqk,order_num,jlmc,jlxm,jldj,name,year,num_of_unit,ranking,num_of_major,proportion from (
+            (select a.id ,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,e.name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,c.superiorfacultycode,c.superiorfaculty,c.major_level1_No,c.major_level1,c.gh,a.data_source,a.source_dept,b.status
+            from sams_factdata.award_info a
+            inner join  sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            inner join sams_factdata.xkpg_teacher_ryjd c on c.gh=b.gh and c.major_level1_No=major_no
+            left join sams_factdata.xkpg_research_award d on d.ID_award=a.id and d.major_level1_No=major_no
+            left join (select jlid,group_concat(distinct xm ORDER BY xh) name from sams_factdata.award_stuff where 1=1 group by jlid) e on a.id=e.jlid
+            where 1=1 and a.jllx='科研奖' and a.scbj='N' and (d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' or d.round_id is null) and c.major_level1_No=major_no
+            group by a.id order by year desc)
+            union
+            (select a.id,if(a.province is null or a.province='',if(jllb='其他' and qtjllb!='',qtjllb,jllb),concat(if(jllb='其他' and qtjllb!='',qtjllb,jllb),'(',province,')')) jllb,
+            jlmc,jlxm,jldj,jljb,group_concat(distinct b.xm ORDER BY b.xh) as name,year,un.zsbh,d.num_of_unit,d.ranking,d.num_of_major,d.xzbj xzbj,
+            d.proportion ,d.id as s_id,d.order_num,d.superiorfacultycode,d.superiorfaculty,d.major_level1_No,d.major_level1,b.gh,a.data_source,a.source_dept,b.status from sams_factdata.award_info a
+            inner join sams_factdata.award_stuff b on b.jlid=a.id
+            left join sams_factdata.award_unit un on a.id=un.jlid and un.name='上海交通大学'
+            left join sams_factdata.xkpg_research_award d on d.ID_award=a.id where 1=1 and a.scbj='N' and d.major_level1_No=major_no and a.jllx='科研奖'
+            and d.round_id='de7658f0-7ba5-11e9-8455-b99ce2974dbd' group by a.id order by year desc)) c
+            where 1=1 and jllb in ('教育部高等学校科学研究优秀成果奖（科学技术）','国防科学技术奖','军队科学技术奖（科学技术）','中国专利奖','教育部高等学校科学研究优秀成果奖（人文社会科学）')
+              and year>=(select left(starttime,4) from sams_factdata.xkpg_lc where state=1)
+              and year<=(select left(endtime,4) from sams_factdata.xkpg_lc where state=1) and status=77 group by id
+             order by xzbj desc,-order_num desc,field(jljb,'国家级','省部级','省级','部级','国际级','校级','其他'),
+            convert(jllb using gbk),field(jldj,'特等奖','一等奖','二等奖','三等奖','其他'),year desc;
+            set i=i+1;
+        end while;
+    end if;
+end

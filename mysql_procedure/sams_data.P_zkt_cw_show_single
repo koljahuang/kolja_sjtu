@@ -1,0 +1,88 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_zkt_cw_show_single`(IN v_id varchar(50))
+    COMMENT '更新单条记录'
+begin
+        delete from sams_data.zkt_cw_show where id=v_id;
+insert into zkt_cw_show (
+select `fp`.`uuid`                                                                                                   AS `id`,
+       `fp`.`xmmc`                                                                                                   AS `xmmc`,
+       `fp`.`gh`                                                                                                     AS `gh`,
+       `fp`.`name`                                                                                                   AS `name`,
+       `fp`.`p_gh`                                                                                                   AS `fzrgh`,
+       `fp`.`p_name`                                                                                                 AS `xmfzrxm`,
+       case
+           when (`fp`.`p_id` is not null and octet_length(`fp`.`p_id`) > 0) then NULL
+           else `fp`.`p_dkje` end                                                                                    AS `dkje`,
+       case
+           when (`fp`.`p_id` is not null and octet_length(`fp`.`p_id`) > 0) then `fp`.`dkje`
+           else `fp`.`p_dkje` - `fp`.`dkje` end                                                                      AS `xzje`,
+       `fp`.`mkje`                                                                                                   AS `mkje`,
+       `fp`.`kgje`                                                                                                   AS `kgje`,
+       `fp`.`xglje`                                                                                                  AS `xglje`,
+       `fp`.`yglje`                                                                                                  AS `yglje`,
+       `fp`.`jxje`                                                                                                   AS `jxje`,
+       `fp`.`clr_order`                                                                                              AS `vcode`,
+       `fp`.`jfkkh`                                                                                                  AS `cwbh`,
+       `fp`.`superiorfacultycode`                                                                                    AS `collegeId`,
+       `fp`.`facultycode`                                                                                            AS `deptId`,
+       `fp`.`superiorfaculty`                                                                                        AS `superiorfaculty`,
+       `fp`.`faculty`                                                                                                AS `faculty`,
+       `fp`.`xmbh`                                                                                                   AS `xmbh`,
+       `jbxx`.`htjf`                                                                                 AS `htjf`,
+       `jbxx`.`ksrq`                                                                                  AS `ksrq`,
+        `jbxx`.`jsrq`                                                                                    AS `jsrq`,
+       `jbxx`.`xmlb`                                                                               AS `xmly`,
+       `jbxx`.`jtzt`                                                                                                 AS `jtzt`,
+       `jbxx`.`xmejlb`                                                                               AS `xmejlb`,
+       `fp`.`xmfl`                                                                                    AS `xmfl`,
+       `jbxx`.`hzdw`                                                                                                 AS `lkdw`,
+       `jbxx`.`xmxz`                                                                               AS `xmxz`,
+       `jbxx`.`xmjb`                                                                                AS `xmjb`,
+       `jbxx`.`pzh`                                                                                                  AS `pzh`,
+       NULL                                                                                             AS `projRank`,
+       `fp`.`pz_unino`                                                                                               AS `pzUnino`,
+       `fp`.`bz`                                                                                                     AS `bz`,
+       `dl`.`mc`                                                                                      AS `xmdl`,
+       date_format(`fp`.`p_rzsj`, '%Y-%m-%d')                                                                        AS `rzsj`,
+       date_format(`fp`.`fpsj`, '%Y-%m-%d')                                                                          AS `fpsj`,
+       case
+           when (`fp`.`p_id` is not null and octet_length(`fp`.`p_id`) > 0) then '1'
+           else '0' end                                                                                              AS `isxz`,
+       case
+           when (`fp`.`p_id` is null or octet_length(`fp`.`p_id`) = 0) then `fp`.`superiorfacultycode`
+           else `p_fp`.`superiorfacultycode` end                                                                     AS `pCollegeId`,
+       case
+           when (`fp`.`p_id` is null or octet_length(`fp`.`p_id`) = 0) then `fp`.`facultycode`
+           else `p_fp`.`facultycode` end                                                                             AS `pDeptId`,
+       `ptp`.`tagid`                                                                                                 AS `pTeamId`,
+       `tp`.`tagid`                                                                                                  AS `teamId`,
+       `tag`.`tagname`                                                                                               AS `team`,
+       fp.remu_rate as remu_rate,
+       fp.remuneration,
+       `fp`.`create_by`                                                                                              AS `updateby`,
+       `fp`.`update_datetime`                                                                                        AS `updatetime`,
+       `fp`.p_id                                    as p_id,
+       fp.performance,
+       fp.college_manage_fee,
+       fp.status,
+       fp.is_dr
+from ((((((`sams_data`.`zkt_cw_fp` `fp` left join (select `zkt`.`xmbh`   AS `xmbh`,
+                                                           `zkt`.`jfkkh`  AS `jfkkh`,
+                                                           `zkt`.`gh`     AS `gh`,
+                                                           `zkt`.`htjf`   AS `htjf`,
+                                                           `zkt`.`xmxz`   AS `xmxz`,
+                                                           `zkt`.`ksrq`   AS `ksrq`,
+                                                           `zkt`.`jsrq`   AS `jsrq`,
+                                                           `zkt`.`jtzt`   AS `jtzt`,
+                                                           `zkt`.`xmly`   AS `xmly`,
+                                                           `zkt`.`xmlb`   AS `xmlb`,
+                                                           `zkt`.`xmejlb` AS `xmejlb`,
+                                                           `zkt`.`xmfl1`  AS `xmfl`,
+                                                           `zkt`.`hzdw`   AS `hzdw`,
+                                                           `zkt`.`xmdl`   AS `xmdl`,
+                                                           `zkt`.`xmjb`   AS `xmjb`,
+                                                           `zkt`.`pzh`    AS `pzh`
+                                                    from `sams_data`.`xm_zkthz_show` `zkt`
+                                                    where `zkt`.`jfkkh` is not null) `jbxx` on (`fp`.`jfkkh` = `jbxx`.`jfkkh`)) left join `sams_factdata`.`t_dm_xm_xmdl` `dl` on (`dl`.`dm` = `jbxx`.`xmdl`)) left join `sams_data`.`zkt_cw_fp` `p_fp` on (`fp`.`p_id` = `p_fp`.`uuid`)) left join `sams`.`tm_tagperson` `tp` on (`fp`.`gh` = `tp`.`userid`)) left join `sams`.`tm_tagperson` `ptp` on (`fp`.`p_gh` = `ptp`.`userid`))
+         left join `sams`.`tm_tag` `tag` on (`tp`.`tagid` = `tag`.`id`)) where fp.uuid = v_id
+group by `fp`.`uuid`);
+    end

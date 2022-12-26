@@ -1,0 +1,91 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_V_KCXX_CAMPUS`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+	truncate sams_factdata.V_KC_KCXX;
+
+    insert into sams_factdata.V_KC_KCXX
+    (gh, kcdm, jxbh, jxbmc, jkmc, kcywmc, kcjj, xn, xq,
+     skdd, kcxs, xydm, kcxzm, kcxz, ksqk, kczxs,
+     tkrs, nj, xqxss, xqxf, scbj, sjc,bsid)
+   select a.rscgh as gh,
+          a.kcdm as kcdm,
+          a.bj as jxbh,
+          b.JXBMC as jxbmc,
+          a.kcmc jkmc,
+          c.KCYWMC as KCYWMC,
+          c.KCJJ as KCJJ,
+          a.xn as xn,
+          a.xq as xq,
+          a.SKSJ as skdd,
+          b.kcxs as kcxs,
+          a.kkyx as xydm,
+          c.KCFLM as kcxzm,
+          b.kcxz as kcxz,
+          b.KSQK as ksqk,
+          a.kczxs as kczxs,
+          a.tkrs as tkrs,
+          b.NJ as nj,
+          a.xqxss as xqxss,
+          a.xqmf as xqmf,
+          c.SCBJ,
+          c.SJC,
+          a.bsid
+    from sams_data.pjpf_info a
+    left join sams_factdata.JX_JSDRK b on a.rscgh=b.gh and a.bsid=b.bsid
+    left join sams_factdata.JX_KCJBK c on a.kcdm=c.KCDM
+    where length(a.rscgh)>3 and a.bsid is not null
+      and a.tkdx='本科生'
+      and a.rscgh in (select distinct a.userid from sams_factdata.V_JG_JBXX_CAMPUS a)
+      and b.SCBJ='N' and c.SCBJ='N'
+    union
+    select a.rscgh as gh, #v50
+          a.kcdm as kcdm, #v50
+          a.bj as jxbh, #v500
+          b.BJMC as jxbmc, #v200
+          a.kcmc jkmc, #v200
+          c.KCYWMC as KCYWMC, #text
+          c.KCJJ as KCJJ, #text
+          a.xn as xn, #int
+          a.xq as xq, #int
+          a.SKSJ as skdd, #v2000
+          null as kcxs,  #v20
+          a.kkyx as xydm, #v20
+          c.KCFL as kcxzm, #v10
+          b.kcxz as kcxz, #v10
+          null as ksqk, #v20
+          a.kczxs as kczxs, #v50
+          a.tkrs as tkrs, #int
+          null as nj, #v50
+          a.xqxss as xqxss, #int
+          a.xqmf as xqmf, #v50
+          c.SCBJ as scbj, #char2
+          c.sjc as sjc,
+          a.bj
+    from sams_data.pjpf_info a
+    left join sams_factdata.TJGL_KCXXTJ_RKJS b on a.rscgh=b.RKJSZGH and a.bj=b.bjdm
+    left join sams_factdata.JX_KCJBK_YJS c on a.kcdm=c.KCDM
+    where length(a.rscgh)>3 and a.bj is not null
+      and a.tkdx='研究生'
+      and a.rscgh in (select distinct a.userid from sams_factdata.V_JG_JBXX_CAMPUS a)
+      and c.SCBJ='N';
+
+    truncate sams_factdata.V_KC_KKXX;
+
+    insert into sams_factdata.V_KC_KKXX(gh, bsid, qsz, jsz, jc, js, zhu, zhuxh, xingq, jsdm)
+    select gh,bsid,qsz,jsz,jc,js,zhu,zhuxh,xingq,jsdm from sams_factdata.JX_SYK a
+    where exists(select b.bsid from sams_factdata.V_KC_KCXX b where b.gh=a.gh and b.bsid=a.bsid)
+        and a.scbj='N';
+	###
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('33','Update_V_KCXX_CAMPUS','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('33','Update_V_KCXX_CAMPUS','0',now(),'执行成功');
+	END IF;
+END

@@ -1,0 +1,100 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_V_LIB_LZK`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+
+
+    truncate sams_factdata.V_LIB_LZK;
+    insert into sams_factdata.V_LIB_LZK(id, updated_timestamp, updated_user, lib_id, 
+                                        cbsorqkmc, is_international_collab, lwfbflm, sfjdwdydw, cbh, fbny, http, zzlb, corresponding_author_num,
+                                        first_author_num, issue, volume, start_page, end_page,
+                                        doi, wos, qkyxyz, tycs, abstract, gh, name, pm, zzjsm, dyzz, txzz, qr, scbj, lib_used, lzmc)
+    select `sams_factdata`.`lzk`.`id`                       AS `id`,
+           `sams_factdata`.`lzk`.`update_timestamp`         AS `updated_timestamp`,
+           'SA'                                             AS `updated_user`,
+           `sams_factdata`.`lzk`.`lib_id`                   AS `lib_id`,
+           `sams_factdata`.`lzk`.`cbsorqkmc`                AS `cbsorqkmc`,
+           `sams_factdata`.`lzk`.`IS_INTERNATIONAL_COLLAB`  AS `IS_INTERNATIONAL_COLLAB`,
+           `sams_factdata`.`lzk`.`lwfbflm`                  AS `lwfbflm`,
+           `sams_factdata`.`lzk`.`sfjdwdydw`                AS `sfjdwdydw`,
+           `sams_factdata`.`lzk`.`cbh`                      AS `cbh`,
+           `sams_factdata`.`lzk`.`fbny`                     AS `fbny`,
+           `sams_factdata`.`lzk`.`http`                     AS `http`,
+           `sams_factdata`.`lzk`.`zzlb`                     AS `zzlb`,
+           `sams_factdata`.`lzk`.`corresponding_author_num` AS `corresponding_author_num`,
+           `sams_factdata`.`lzk`.`first_author_num`         AS `first_author_num`,
+                 `sams_factdata`.`lzk`.`issue`                    AS `issue`,
+           `sams_factdata`.`lzk`.`volume`                   AS `volume`,
+
+           `sams_factdata`.`lzk`.`start_page`               AS `start_page`,
+           `sams_factdata`.`lzk`.`end_page`                 AS `end_page`,
+           `sams_factdata`.`lzk`.`doi`                      AS `DOI`,
+           `sams_factdata`.`lzk`.`WOS`                      AS `WOS`,
+           `sams_factdata`.`lzk`.`qkyxyz`                   AS `qkyxyz`,
+           `sams_factdata`.`lzk`.`tycs`                     AS `tycs`,
+           `sams_factdata`.`lzk`.`abstract`                 AS `abstract`,
+           `sams_factdata`.`lzk`.`gh`                       AS `gh`,
+           `sams_factdata`.`lzk`.`name`                     AS `name`,
+           `sams_factdata`.`lzk`.`pm`                       AS `pm`,
+           `sams_factdata`.`lzk`.`zzjsm`                    AS `zzjsm`,
+           `sams_factdata`.`lzk`.`dyzz`                     AS `dyzz`,
+           `sams_factdata`.`lzk`.`txzz`                     AS `txzz`,
+           `sams_factdata`.`lzk`.`qr`                       AS `qr`,
+           `sams_factdata`.`lzk`.`scbj`                     AS `scbj`,
+           NULL                                             AS `lib_used`,
+           `sams_factdata`.`lzk`.`lzmc`                     AS `lzmc`
+    from `sams_factdata`.`lzk`
+    where `sams_factdata`.`lzk`.`lib_id` is not null
+      and `sams_factdata`.`lzk`.`lib_id` <> ''
+      and left(`sams_factdata`.`lzk`.`fbny`, 4) >= '2020'
+    union
+    select `sams_factdata`.`lzk`.`id`                       AS `id`,
+           `sams_factdata`.`lzk`.`update_timestamp`         AS `updated_timestamp`,
+           'SA'                                             AS `updated_user`,
+           `sams_factdata`.`lzk`.`lib_id`                   AS `lib_id`,
+           `sams_factdata`.`lzk`.`cbsorqkmc`                AS `cbsorqkmc`,
+           `sams_factdata`.`lzk`.`IS_INTERNATIONAL_COLLAB`  AS `IS_INTERNATIONAL_COLLAB`,
+           `sams_factdata`.`lzk`.`lwfbflm`                  AS `lwfbflm`,
+           `sams_factdata`.`lzk`.`sfjdwdydw`                AS `sfjdwdydw`,
+           `sams_factdata`.`lzk`.`cbh`                      AS `cbh`,
+           `sams_factdata`.`lzk`.`fbny`                     AS `fbny`,
+           `sams_factdata`.`lzk`.`http`                     AS `http`,
+           `sams_factdata`.`lzk`.`zzlb`                     AS `zzlb`,
+           `sams_factdata`.`lzk`.`corresponding_author_num` AS `corresponding_author_num`,
+           `sams_factdata`.`lzk`.`first_author_num`         AS `first_author_num`,
+                  `sams_factdata`.`lzk`.`issue`                    AS `issue`,
+           `sams_factdata`.`lzk`.`volume`                   AS `volume`,
+           `sams_factdata`.`lzk`.`start_page`               AS `start_page`,
+           `sams_factdata`.`lzk`.`end_page`                 AS `end_page`,
+           `sams_factdata`.`lzk`.`doi`                      AS `DOI`,
+           `sams_factdata`.`lzk`.`WOS`                      AS `WOS`,
+           `sams_factdata`.`lzk`.`qkyxyz`                   AS `qkyxyz`,
+           `sams_factdata`.`lzk`.`tycs`                     AS `tycs`,
+           `sams_factdata`.`lzk`.`abstract`                 AS `abstract`,
+           `sams_factdata`.`lzk`.`gh`                       AS `gh`,
+           `sams_factdata`.`lzk`.`name`                     AS `name`,
+           `sams_factdata`.`lzk`.`pm`                       AS `pm`,
+           `sams_factdata`.`lzk`.`zzjsm`                    AS `zzjsm`,
+           `sams_factdata`.`lzk`.`dyzz`                     AS `dyzz`,
+           `sams_factdata`.`lzk`.`txzz`                     AS `txzz`,
+           `sams_factdata`.`lzk`.`qr`                       AS `qr`,
+           `sams_factdata`.`lzk`.`scbj`                     AS `scbj`,
+           NULL                                             AS `lib_used`,
+           `sams_factdata`.`lzk`.`lzmc`                     AS `lzmc`
+    from `sams_factdata`.`lzk`
+    where (`sams_factdata`.`lzk`.`lib_id` is null or `sams_factdata`.`lzk`.`lib_id` = '')
+      and octet_length(`sams_factdata`.`lzk`.`id`) = 20
+      and `sams_factdata`.`lzk`.`scbj` = 'N'
+      and `sams_factdata`.`lzk`.`qr` = 77;
+
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('39','Update_V_LIB_LZK','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('39','Update_V_LIB_LZK','0',now(),'执行成功');
+	END IF;
+END

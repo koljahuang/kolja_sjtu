@@ -1,0 +1,164 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `update_xm_zkt_kh_single`(IN userid varchar(20), IN start_time date, IN end_time date)
+    COMMENT '按照开始时间和结束时间统计某一个人的项目'
+begin
+    # 创建临时表存储老师过去填写的信息，在统一更新后进行写入
+
+    # 暂时没有要存的信息，以后有的话在存
+
+    # 删除旧的历史信息
+    delete from xm_zkt_kh where kh_userid=userid and year=year(end_time);
+    # 插入项目人的信息
+    ## 负责人信息
+    insert into sams_data.xm_zkt_kh (id, cwbh,  kh_userid, kh_name, isfzr, start_time, end_time)
+    select uuid(),
+           tmp.jfkkh,
+
+           tmp.p_gh,
+           tmp.p_name,
+           'y',
+           tmp.start_time,
+           tmp.end_time
+    from ( select distinct f.jfkkh,
+                          f.p_gh,
+                          f.p_name,
+
+                          start_time,
+                          end_time
+          from zkt_cw_fp f where  f.fpsj >= start_time and f.fpsj <= end_time  and  f.gh = f.p_gh   and f.p_gh = userid
+          union
+        select distinct f.jfkkh,
+                          f.p_gh,
+                          f.p_name,
+
+                          start_time,
+                          end_time
+          from zkt_cw_fp f
+                   inner join sams_factdata.T_KY_ALLOCATE a on f.jfkkh = a.PRJ_CODE
+          where f.gh = f.p_gh
+            and f.p_gh = userid
+            and a.sdate >= start_time and a.sdate <= end_time) tmp;
+#              left join sams_data.xm_zkt_kh k
+#                        on k.kh_userid = tmp.p_gh and k.cwbh = tmp.jfkkh and k.start_time = tmp.start_time and
+#                           k.end_time = tmp.end_time
+#     where k.cwbh is null
+#       and k.kh_userid is null
+#       and k.start_time is null
+#       and k.end_time is null;
+
+
+## 协作人信息
+    insert into sams_data.xm_zkt_kh (id, cwbh, kh_userid, kh_name, isxzr, start_time, end_time)
+    select uuid(),
+           tmp.jfkkh,
+           tmp.gh,
+           tmp.name,
+           'y',
+           tmp.start_time,
+           tmp.end_time
+    from (
+        select distinct f.jfkkh,
+                          f.gh,
+                          f.name,
+                          start_time,
+                          end_time
+          from zkt_cw_fp f where f.fpsj >= start_time and f.fpsj <= end_time and f.gh != f.p_gh        and f.gh = userid) tmp;
+#              left join sams_data.xm_zkt_kh k
+#                        on k.kh_userid = tmp.gh and k.cwbh = tmp.jfkkh and k.start_time = tmp.start_time and
+#                           k.end_time = tmp.end_time
+#     where k.cwbh is null
+#       and k.kh_userid is null
+#       and k.start_time is null
+#       and k.end_time is null;
+
+    ## 更新项目的信息
+
+-- 更新项目基本信息
+
+-- 更新项目编号
+ update sams_data.xm_zkt_kh z inner join sams_factdata.T_KY_ALLOCATE a on z.cwbh=a.PRJ_CODE
+    set z.xmbh=a.ky_prj_code
+    where z.kh_userid=userid ;
+-- 更新项目名称
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_ky_xmzkt x on z.cwbh = x.JFKKH
+    set z.xmmc=x.ZKTMC
+    where z.kh_userid = userid;
+    update sams_data.xm_zkt_kh z set xmmc=cwbh where z.xmmc is null and z.kh_userid = userid;
+    -- 更新考核人学院和系所
+    update sams_data.xm_zkt_kh z inner join sams.hr_basic h on z.kh_userid = h.userid
+    set z.superfacultycode=h.superiorfacultycode,
+        z.facultycode=h.facultycode
+    where z.kh_userid = userid;
+-- 更新 项目开始日期，结束日期，合同经费
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_ky_xmzkt x on z.cwbh = x.JFKKH
+    set z.kssj=x.KSRQ,
+        z.jssj=x.JSRQ,
+        z.htjf=x.ZKTHTJE
+    where z.kh_userid = userid;
+-- 更新项目类别
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_xm_jbxx x on z.xmbh = x.XMBH
+    set z.xmlb=case xmdl when '1' then '自然科学' when '2' then '人文社科' end
+    where z.kh_userid = userid;
+-- 更新项目类型
+
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_xm_jbxx x on z.xmbh = x.XMBH
+    set z.xmlx=case xmfl when '1' then '纵向项目' when '2' then '校内项目' when '3' then '横向项目' end
+    where z.kh_userid = userid;
+-- 更新协作单位
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_xm_jbxx x on z.xmbh = x.XMBH
+    set z.lkdw=ifnull(x.HZDW,x.wtdw)
+    where z.kh_userid = userid;
+-- 更新项目负责人 根据到账表
+
+    update sams_data.xm_zkt_kh z inner join sams_factdata.T_KY_ALLOCATE t on z.cwbh = t.PRJ_CODE
+    set z.project_leader_code=t.charge_sno,
+        z.project_leader_name=t.charge_name
+    where z.kh_userid = userid;
+-- 更新项目二级类别
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_xm_jbxx x on z.xmbh = x.XMBH
+        inner join sams_factdata.t_dm_xm_xmlb t on t.dm = x.XMEJLB
+    set z.project_type_level_2=t.MC
+    where z.kh_userid = userid;
+    -- 更新项目级别 待补充
+update sams_data.xm_zkt_kh z inner join sams_factdata.t_xm_jbxx x on z.xmbh = x.XMBH
+    inner join sams_factdata.t_dm_xm_xmjb j on x.XMJB=j.dm
+    set z.xmjb=j.MC
+    where z.kh_userid=userid;
+
+-- 更新协作经费,按照分配时间
+
+    update sams_data.xm_zkt_kh x inner join
+        (select jfkkh, sum(dkje) as money
+         from sams_data.zkt_cw_fp
+         where gh = userid
+           and fpsj >= start_time
+           and fpsj <= end_time
+         group by jfkkh) t
+        on x.cwbh = t.jfkkh and x.start_time = start_time and x.end_time = end_time
+    set x.xzjf=t.money
+    where x.kh_userid = userid;
+
+-- 更新免扣金额，按照到款时间
+
+-- 更新总到账和学院管理费，按照到款时间
+    update sams_data.xm_zkt_kh x inner join (
+        select PRJ_CODE, sum(inamt) / 10000 as inamt, sum(amt2) / 10000 as amt2,sum(mkje) as mkje
+        from sams_factdata.T_KY_ALLOCATE
+        where sdate >= start_time
+          and sdate <= end_time
+        group by PRJ_CODE) t
+        on x.cwbh = t.PRJ_CODE and x.start_time = start_time and x.end_time = end_time
+    set x.dkje=t.inamt,
+        x.xyglf=t.amt2,
+        x.mkje=t.mkje
+    where x.kh_userid = userid;
+
+-- 更新项目状态
+    update sams_data.xm_zkt_kh z inner join sams_factdata.t_ky_xmzkt x on z.cwbh = x.JFKKH
+    set z.project_status=case x.ZKTJTZT when 1 then '在研' when 2 then '结题' when '3' then '终止' else '其他' end
+    where z.kh_userid = userid;
+    -- 更新项目状态为空的值为其他
+    update sams_data.xm_zkt_kh z set z.project_status='其他' where z.project_status is null and z.kh_userid = userid;
+    commit;
+-- 更新年的信息 按照考核结束的日子的年份设置
+    update sams_data.xm_zkt_kh x set year= year(x.end_time) where kh_userid = userid;
+end

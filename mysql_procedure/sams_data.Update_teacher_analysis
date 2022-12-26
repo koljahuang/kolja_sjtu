@@ -1,0 +1,320 @@
+CREATE DEFINER=`sams`@`sams-%` PROCEDURE `Update_teacher_analysis`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+	TRUNCATE sams_data.teacher_info_analysis_bak;
+	
+	insert into sams_data.teacher_info_analysis_bak(gw, type, superfacultycode, let29Num, age34Num,
+																							age39Num, age44Num, age49Num, het50Num, sumNum, average)
+	select
+	(case when (gw.dm = '151' and jbxx.PRGW is null) or PRGW = '长聘教授'
+			then '长聘体系（长聘教职）'
+		when jbxx.PRGW = '首席研究员'
+			then '长聘体系（长聘教职）'
+		when jbxx.PRGW = '长聘副教授'
+			then '长聘体系（长聘教职）'
+		when jbxx.PRGW = '长聘教轨副教授' or jbxx.PRGW = '特别研究员'
+			then '长聘体系（长聘教轨）'
+		when jbxx.PRGW = '特别副研究员' or jbxx.PRGW = '助理教授'
+			then '长聘体系（长聘教轨）' end)          gw,
+			
+		(case when (gw.dm = '151' and jbxx.PRGW is null) or PRGW = '长聘教授'
+			then '长聘教授'
+		when jbxx.PRGW = '首席研究员'
+			then '首席研究员'
+		when jbxx.PRGW = '长聘副教授'
+			then '长聘副教授'
+		when jbxx.PRGW = '长聘教轨副教授' or jbxx.PRGW = '特别研究员'
+			then '长聘教轨副教授'
+		when jbxx.PRGW = '特别副研究员' or jbxx.PRGW = '助理教授'
+			then '助理教授' end)          type,
+				hr.superiorfacultycode,
+		count(DISTINCT case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <=29
+			then hr.userid
+									else null end) let29Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 34
+			then hr.userid
+									else null end) age34Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 39
+			then hr.userid
+									else null end) age39Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 44
+			then hr.userid
+									else null end) age44Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 49
+			then hr.userid
+									else null end) age49Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 49
+			then hr.userid
+									else null end) het50Num,
+			count(hr.userid) as sumNum,
+				round((sum((floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 )))/count(hr.userid)),1)average
+	from sams_factdata.jg_jbxx jbxx
+	left join sams_factdata.dm_bzlb_gw gw on jbxx.gwm = gw.dm
+	left join sams.hr_basic hr on jbxx.GH = hr.userid and hr.usertype = 'C'
+	where
+		hr.jobstatus = '9' and jbxx.BZM = '150' and hr.scbj = 'N' and jbxx.rylbm in ('101', '111', '121', '204', '205')
+	and ((gw.dm = '151' and jbxx.PRGW is null) or jbxx.PRGW in ('长聘教授','首席研究员','长聘副教授','长聘教轨副教授','特别研究员','特别副研究员','助理教授'))
+	group by case when (gw.dm = '151' and jbxx.PRGW is null) or jbxx.PRGW = '长聘教授' then '长聘教授'
+					when jbxx.PRGW = '首席研究员'
+						then '首席研究员'
+					when jbxx.PRGW = '长聘副教授'
+						then '长聘副教授'
+					when jbxx.PRGW = '长聘教轨副教授' or jbxx.PRGW = '特别研究员'
+						then '特别研究员'
+					when jbxx.PRGW = '特别副研究员' or jbxx.PRGW = '助理教授'
+						then '助理教授' end, superiorfacultycode
+	
+	union
+	
+	select
+			'长聘体系（荣誉体系）' as gw,
+		(case when jbxx.PRGW like '%特聘%'
+			then '特聘教授'
+		when jbxx.PRGW like '%讲席%'
+			then '讲席教授' end)         type,
+				hr.superiorfacultycode,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 29 and jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 29 and hr.jobstatus = '9'
+										then hr.userid
+									else null end) let29Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 34 and
+														jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 34 and
+												hr.jobstatus = '9'
+										then hr.userid
+									else null end) age34Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 39 and
+														jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 39 and
+												hr.jobstatus = '9'
+										then hr.userid
+									else null end) age39Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 44 and
+														jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 44 and
+												hr.jobstatus = '9'
+										then hr.userid
+									else null end) age44Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 49 and
+														jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 49 and
+												hr.jobstatus = '9'
+										then hr.userid
+									else null end) age49Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 49 and
+														jbxx.PRGW = '荣誉讲席教授'
+			then hr.userid
+									when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 49 and
+												hr.jobstatus = '9'
+										then hr.userid
+									else null end) het50Num,
+					count(distinct case when jbxx.PRGW = '荣誉讲席教授'
+									then hr.userid
+									when hr.jobstatus = '9'
+										then hr.userid
+									else null end) sumNum,
+					round((sum((floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 )))/count(hr.userid)),1)average
+	from sams_factdata.jg_jbxx jbxx left join sams_factdata.dm_bzlb_gw gw on jbxx.gwm = gw.dm
+		left join sams.hr_basic hr on jbxx.GH = hr.userid and hr.usertype = 'C'
+	where
+		((hr.jobstatus = '9' and jbxx.GWM = '151' and hr.scbj = 'N' and (jbxx.PRGW like '%讲席%' or jbxx.PRGW like '%特聘%') and jbxx.PRGW <> '访问特聘教授' and  jbxx.PRGW <> '访问讲席教授')  and jbxx.PRGW!= '荣誉讲席教授')
+	group by case when jbxx.PRGW like '%讲席%'
+		then '讲席教授'
+					when jbxx.PRGW like '%特聘%'
+						then '特聘教授'
+					else jbxx.PRGW end, hr.superiorfacultycode;
+	
+	
+	
+	insert into sams_data.teacher_info_analysis_bak(gw, type, superfacultycode, let29Num, age34Num,
+																							age39Num, age44Num, age49Num, het50Num, sumNum, average)
+	select '常规体系' as gw,
+				(case when t.zwzj='正高'
+						then '正高'
+					when t.zwzj='副高'
+							then '副高'
+					when t.zwzj='中级'
+							then '中级'
+					else '待定' end) type,
+					t.superiorfacultycode,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 29
+											then t.userid
+									else null end) let29Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 34
+											then t.userid
+									else null end) age34Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 39
+											then t.userid
+									else null end) age39Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 44
+											then t.userid
+									else null end) age44Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 49
+											then t.userid
+									else null end) age49Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 49
+											then t.userid
+									else null end) het50Num,
+				count(DISTINCT t.userid) sumNum,
+					round((sum((floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 )))/count(t.userid)),1) average
+	from sams_data.teacher_info_adl t
+	where t.gwmc in('教学为主','教学科研并重','科研为主','科研型','教学型') and t.rylbmc not like '%柔性聘用%' and t.userid not in('60316','60349','60500')
+	group by case when t.zwzj='正高'
+					then '正高'
+			when t.zwzj='副高'
+					then '副高'
+			when t.zwzj='中级'
+					then '中级'
+			else '待定' end, t.superiorfacultycode;
+	
+	insert into sams_data.teacher_info_analysis_bak(gw, type, superfacultycode, let29Num, age34Num,
+																							age39Num, age44Num, age49Num, het50Num, sumNum, average)
+	select '专职科研' as gw,
+				(case when t.zwzj='正高'
+					then '正高'
+					when t.zwzj='副高'
+							then '副高'
+					when t.zwzj='中级'
+							then '中级'
+					else '待定' end) type,
+					t.superiorfacultycode,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 29
+											then t.userid
+									else null end) let29Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 34
+											then t.userid
+									else null end) age34Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 39
+											then t.userid
+									else null end) age39Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 44
+											then t.userid
+									else null end) age44Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) <= 49
+											then t.userid
+									else null end) age49Num,
+				count(distinct case when floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 ) > 49
+											then t.userid
+									else null end) het50Num,
+				count(DISTINCT t.userid) sumNum,
+				round((sum((floor(((year(now())-substr(t.birthdate,1,4))*12+month(now())-substr(t.birthdate,6,2))/12 )))/count(t.userid)),1) average
+	from sams_data.teacher_info_adl t
+	where t.gwmc in('专职科研')
+	group by case when t.zwzj='正高'
+					then '正高'
+			when t.zwzj='副高'
+					then '副高'
+			when t.zwzj='中级'
+					then '中级'
+			else '待定' end, t.superiorfacultycode;
+	
+	
+	
+	insert into sams_data.teacher_info_analysis_bak(gw, type, superfacultycode, let29Num, age34Num,
+																							age39Num, age44Num, age49Num, het50Num, sumNum, average)
+	select
+			'长聘体系' as gw,
+		(case when jbxx.zjm=1
+						then '正高'
+					when jbxx.zjm=2
+						then '副高'
+					when jbxx.zjm=3
+						then '中级'
+					else '待定' end)         type,
+				hr.superiorfacultycode,
+		count(DISTINCT case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <=29
+			then hr.userid else null end) let29Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 34
+			then hr.userid else null end) age34Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 39
+			then hr.userid else null end) age39Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 44
+			then hr.userid else null end) age44Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 49
+			then hr.userid else null end) age49Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 49
+			then hr.userid else null end) het50Num,
+					count(distinct hr.userid) sumNum,
+		round((sum((floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 )))/count(hr.userid)),1) average
+	from sams_factdata.jg_jbxx jbxx left join sams_factdata.dm_bzlb_gw gw on jbxx.gwm = gw.dm
+		left join sams.hr_basic hr on jbxx.GH = hr.userid and hr.usertype = 'C'
+	where
+	(((hr.jobstatus = '9' and jbxx.GWM = '151' and hr.scbj = 'N' and (jbxx.PRGW like '%讲席%' or jbxx.PRGW like '%特聘%') and jbxx.PRGW <> '访问特聘教授' and  jbxx.PRGW <> '访问讲席教授') 
+	and jbxx.PRGW!= '荣誉讲席教授')  or  ( hr.jobstatus = '9' and jbxx.BZM = '150' and hr.scbj = 'N' and jbxx.rylbm in ('101', '111', '121', '204', '205')
+	and ((gw.dm = '151' and jbxx.PRGW is null) or jbxx.PRGW in ('长聘教授','首席研究员','长聘副教授','长聘教轨副教授','特别研究员','特别副研究员','助理教授')))) 
+	group by case when jbxx.zjm=1
+		then '正高'
+	when jbxx.zjm=2
+		then '副高'
+	when jbxx.zjm=3
+		then '中级'
+	else '待定' end, hr.superiorfacultycode;
+	
+	update sams_data.teacher_info_analysis_bak a 
+	inner join (
+	select
+			'常规体系' as gw,
+			'正高' as type,
+				hr.superiorfacultycode as superfacultycode,
+		count(DISTINCT case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <=29
+			then hr.userid else null end) let29Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 29 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 34
+			then hr.userid else null end) age34Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 34 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 39
+			then hr.userid else null end) age39Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 39 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 44
+			then hr.userid else null end) age44Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 44 and floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) <= 49
+			then hr.userid else null end) age49Num,
+		count(distinct case when floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 ) > 49
+			then hr.userid else null end) het50Num,
+					count(distinct hr.userid) sumNum,
+		round((sum((floor(((year(now())-substr(hr.birthdate,1,4))*12+month(now())-substr(hr.birthdate,6,2))/12 )))/count(hr.userid)),1) average
+	from sams_factdata.jg_jbxx jbxx
+	left join sams.hr_basic hr on jbxx.GH = hr.userid and hr.usertype = 'C'
+	where jbxx.PRGW in ('教授','研究员') and ryztm='9' and hr.superiorfacultycode='03000') b 
+	on a.gw=b.gw and a.type=b.type and a.superfacultycode=b.superfacultycode
+	set a.let29Num=a.let29Num+b.let29Num,
+	a.age34Num=a.age34Num+b.age34Num,
+	a.let29Num=a.let29Num+b.let29Num,
+	a.age39Num=a.age39Num+b.age39Num,
+	a.age44Num=a.age44Num+b.age44Num,
+	a.age49Num=a.age49Num+b.age49Num,
+	a.het50Num=a.het50Num+b.het50Num,
+	a.sumNum=a.sumNum+b.sumNum,
+	a.average=round((a.average*a.sumNum+b.average*b.sumNum)/(a.sumNum+b.sumNum),1)
+	;
+	
+	
+	update sams_data.teacher_info_analysis a 
+	inner join sams_data.teacher_info_analysis_bak b 
+	on a.gw=b.gw and a.type=b.type and a.superfacultycode=b.superfacultycode
+	set a.let29Num=b.let29Num,
+	a.age34Num=b.age34Num,
+	a.let29Num=b.let29Num,
+	a.age39Num=b.age39Num,
+	a.age44Num=b.age44Num,
+	a.age49Num=b.age49Num,
+	a.het50Num=b.het50Num,
+	a.sumNum=b.sumNum,
+	a.average=b.average
+	where a.type not in('院士','讲席教授');
+	
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('50','Update_teacher_analysis','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('50','Update_teacher_analysis','0',now(),'执行成功');
+	END IF;
+END

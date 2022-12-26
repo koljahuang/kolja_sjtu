@@ -1,0 +1,148 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_hr_postdoctor`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	#### 判断是否有更新信息
+	if ((select count(*) from sams.hr_bsh where gh is not null)<500) then
+        IF EXCEPTION = 1 THEN
+		    ROLLBACK;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('21','Update_hr_postdoctor','1',now(),'执行失败');
+	    ELSE
+		    COMMIT;
+		    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('21','Update_hr_postdoctor','0',now(),'执行成功，无更新内容');
+	    END IF;
+    else
+
+        create temporary table sams.tmp_hr_postdoctor like sams.hr_postdoctor;
+
+        insert sams.tmp_hr_postdoctor(userid, name, faculty, facultycode, research_filed,
+                                       identity_type, tutor_name, tutor_userid,
+                                       entry_date, doctor_graduation_school, birthday, fund_support,
+                                       SFZid, phone, mail, zzmm, zjxy, country, migrate_family,
+                                       migrate_family_name, migrate_family_relationship,
+                                       migrate_family_SFZid, migrate_family_reason, migrate_address,
+                                      superiorfaculty,superiorfacultycode,jobstatus,exist_date,entry_type,sjgzldz)
+        select a.gh,
+               a.xm,
+               a.yxmc,
+               a.yxdm,
+               c.major,
+               null as identity_type,
+               a.RealDS,
+               null as tutor_userid,
+               a.jzsj,
+               substring_index(replace(replace(c.schoolname,'（','('),'）',')'),',',1),
+               a.csrq,
+               null as fund_support,
+               a.sfzh,
+               a.sj,
+               a.dzyj,
+               d.partisan_assemble,
+               e.zjxy,
+               a.gjmc,
+               null as migrate_family,
+               null as migrate_family_name,
+               null as migrate_family_relationship,
+               null as migrate_family_SFZid,
+               null as migrate_family_reason,
+               null as migrate_address,
+               a.parentmc,
+               a.parentdm,
+               e.ryztm,
+               a.czsj,
+               a.rylbmc,
+               a.real_bshldz
+        from sams.hr_bsh a
+        left join (select userid,group_concat(schoolname) as schoolname,major from sams.hr_academicdeg where substring(academiccode,1,1)='2' group by userid) c
+        on a.gh=c.userid
+        left join sams_data.teacher_info_all_adl d
+        on a.gh=d.userid
+        left join sams_factdata.jg_jbxx e
+        on a.gh=e.GH
+        where a.gh is not null;
+
+
+		delete from sams.hr_postdoctor
+		where not exists (
+		    select * from sams.tmp_hr_postdoctor B
+		    where B.userid=sams.hr_postdoctor.userid);
+
+		update sams.hr_postdoctor A
+		inner join sams.tmp_hr_postdoctor B
+		on A.userid=B.userid
+		set A.name=B.name,
+		    A.faculty=B.faculty,
+		    A.facultycode=B.facultycode,
+		    A.superiorfaculty=B.superiorfaculty,
+		    A.superiorfacultycode=B.superiorfacultycode,
+		    A.birthday=B.birthday,
+		    A.SFZid=B.SFZid,
+		    A.doctor_graduation_school=B.doctor_graduation_school,
+		    A.zjxy=B.zjxy,
+		    A.country=B.country,
+		    A.zzmm=B.zzmm,
+		    A.jobstatus=B.jobstatus,
+		    A.exist_date=B.exist_date,
+		    A.entry_type=B.entry_type,
+		    A.sjgzldz=B.sjgzldz,
+		    A.tutor_name=B.tutor_name,
+		    A.entry_date=B.entry_date,
+		    A.phone=B.phone,
+		    A.mail=B.mail
+        where A.userid is not null;
+
+
+        insert sams.hr_postdoctor(userid, name, faculty, facultycode, research_filed,
+                                       identity_type, tutor_name, tutor_userid,
+                                       entry_date, doctor_graduation_school, birthday, fund_support,
+                                       SFZid, phone, mail, zzmm, zjxy, country, migrate_family,
+                                       migrate_family_name, migrate_family_relationship,
+                                       migrate_family_SFZid, migrate_family_reason, migrate_address,jobstatus,
+                                       exist_date,entry_type,sjgzldz)
+        select userid, name, faculty, facultycode, research_filed,
+                                       identity_type, tutor_name, tutor_userid,
+                                       entry_date, doctor_graduation_school, birthday, fund_support,
+                                       SFZid, phone, mail, zzmm, zjxy, country, migrate_family,
+                                       migrate_family_name, migrate_family_relationship,
+                                       migrate_family_SFZid, migrate_family_reason, migrate_address,jobstatus,
+                                       exist_date,entry_type,sjgzldz
+		from sams.tmp_hr_postdoctor
+		where not exists (
+		    select * from sams.hr_postdoctor B
+		    where B.userid=sams.tmp_hr_postdoctor.userid);
+				
+				update sams.hr_postdoctor A
+				inner join sams.hr_basic B on A.userid=B.userid and B.usertype='C'
+        set A.faculty=B.faculty,A.facultycode=B.facultycode
+        where A.tutor_userid is null or A.tutor_userid='';
+
+        update sams.hr_postdoctor A
+				inner join sams.hr_basic B on A.tutor_userid=B.userid and B.usertype='C'
+        set A.faculty=B.faculty,A.facultycode=B.facultycode
+        where A.tutor_userid is not null and A.tutor_userid!='';
+        
+        update sams.hr_postdoctor a
+        inner join data_test.cxr_hr_postdoctor_faculty_update b on a.userid=b.gh
+        left join sams.tm_org c on b.real_faculty=c.name
+        set a.faculty=b.real_faculty,a.facultycode=c.code
+        where c.code is not null;
+
+        update sams.hr_basic aa
+        inner join sams.hr_postdoctor bb on aa.userid=bb.userid and aa.usertype='C'
+        set aa.faculty=bb.faculty,aa.facultycode=bb.facultycode
+        where aa.facultycode!=bb.facultycode
+        and (bb.tutor_userid is not null or bb.tutor_name is not null);
+
+        drop temporary table sams.tmp_hr_postdoctor;
+
+	    IF EXCEPTION = 1 THEN
+	        ROLLBACK;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('21','Update_hr_postdoctor','1',now(),'执行失败');
+	    ELSE
+	        COMMIT;
+	        insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('21','Update_hr_postdoctor','0',now(),'执行成功');
+	    END IF;
+    end if;
+END

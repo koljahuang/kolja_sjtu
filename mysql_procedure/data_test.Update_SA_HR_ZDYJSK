@@ -1,0 +1,44 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `Update_SA_HR_ZDYJSK`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+	
+	truncate data_test.SA_HR_ZDYJSK_NEWITEM;
+	
+
+ 	create temporary table data_test.SA_HR_ZDYJSK_NOW like data_test.SA_HR_ZDYJSK_NEWITEM;
+    insert into data_test.SA_HR_ZDYJSK_NOW (  gh , xsxm , xsxh , xslbm  ,zdzkm  , zdksny , zdjsny , qr,sjly, sabz ,said ,sfzx )
+    select  a.dsgh as gh,a.xm as xsxm,a.XH as xsxh,b.XSLBDM as xslbm
+       ,dszdfs as zdzkm,rxny as zdksny,ifnull(a.bysj,a.yjbysj) as zdjsny,'2' as qr,'交互' as sjly,'SA首次交互' as sabz,
+       concat(a.xh,'_',a.dsgh,'_',a.xm) as said,
+       (case when zxbs='在校' then '是' else '否' end ) as sfzx
+from sams_data.yjs_mx_all a left join sams_factdata.xs_xsjbk b on a.xh=b.XH
+inner join sams.hr_basic c on a.dsgh=c.userid and c.scbj='N' and usertype='C'
+where  (left(a.rxny,4) >='2016' or left(ifnull(a.bysj,a.yjbysj),4) >='2016') and a.is_err=0;
+  
+	insert into data_test.SA_HR_ZDYJSK_NEWITEM
+	(gh , xsxm , xsxh , xslbm  ,zdzkm  , zdksny , zdjsny , qr,sjly, sabz ,said ,sfzx )
+	select   gh , xsxm , xsxh , xslbm  ,zdzkm  , zdksny , zdjsny , qr,sjly, sabz ,said ,sfzx 
+	from data_test.SA_HR_ZDYJSK_NOW A
+	where not EXISTS(select 1 from data_test.SA_HR_ZDYJSK_BEFORE B where 	A.SAID=B.SAID);
+	
+	
+		insert into data_test.SA_HR_ZDYJSK_BEFORE
+	(gh , xsxm , xsxh , xslbm  ,zdzkm  , zdksny , zdjsny , qr,sjly, sabz ,said ,sfzx )
+	select   gh , xsxm , xsxh , xslbm  ,zdzkm  , zdksny , zdjsny , qr,sjly, sabz ,said ,sfzx 
+	from data_test.SA_HR_ZDYJSK_NOW A
+	where not EXISTS(select 1 from data_test.SA_HR_ZDYJSK_BEFORE B where 	A.SAID=B.SAID);
+
+	drop temporary table data_test.SA_HR_ZDYJSK_NOW;
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('41','SA_HR_ZDYJSK_NEWITEM','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('41','SA_HR_ZDYJSK_NEWITEM','0',now(),'执行成功');
+	END IF;
+END

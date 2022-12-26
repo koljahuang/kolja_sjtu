@@ -1,0 +1,247 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_ZKT_CWFP`(IN v_year varchar(20))
+BEGIN
+  #Routine body goes here...
+	
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+	   -- t_ky_xmzkt 表中cczt=‘-1’为原始表已删除数据
+		 #delete from sams_factdata.t_ky_xmzkt where czzt='-1';
+		 
+		 -- t_ky_allocate 空主键更新；
+		 update sams_factdata.T_KY_ALLOCATE set uuid=uuid() where uuid is null;
+
+		 
+				-- 刷新经费卡卡号
+			update sams_factdata.t_ky_xmzkt A
+			inner join sams_factdata.t_jf_zktdkqk B on A.wid=B.zkt_wid
+			set A.JFKKH=B.JFKKH
+			where A.jfkkh is null and B.jfkkh is not null and A.del_mark='N';
+	
+			-- 由于教师所属学院可能会变化，因此此表每次只刷新本年的数据，即syear字段;按年更新项目财务信息
+
+			delete from sams_data.zkt_cw_info where syear=v_year;	 
+			
+					insert into sams_data.zkt_cw_info(uuid,gh,fzr_name,superiorfacultycode,facultycode
+				,jfkkh,dkje,mkje,kgje,xgje,ygje,zxjx,rzsj,xmfl,xmbh,xmmc,ksrq,jsrq,htjf,lkdw,prj_name,pcode,pname,pcode2,pnam2
+				,xmjb,xmlb,pzh,superiorfaculty,syear,faculty,yftcf,create_datetime,xmly_tj,allocate_uuid,pz_unino,clr_order,
+					remuneration,remu_rate,performance,college_manage_fee)
+				select uuid(),ifnull((select hr.userid from sams.hr_basic hr where charge_sno = hr.userid and charge_name=hr.name_cert and usertype='C' ),zkt.xmfzrgh),
+				ifnull(ky.charge_name,zkt.XMFZRXM),ifnull(bm.PARENT1_C_ID, ky.SA_DEPART) as superiorfacultycode,
+				(select hr.facultycode from sams.hr_basic hr where charge_sno = hr.userid and charge_name=hr.name_cert and usertype='C' and ifnull(bm.PARENT1_C_ID,
+						ky.SA_DEPART)=hr.superiorfacultycode) as facultycode,
+				ky.PRJ_CODE,convert(ifnull(ky.inamt,0)/10000,decimal(20,6)),
+				convert(ifnull(ky.mkje,ifnull(dk.mkje,0)),decimal(20,6)),
+				convert(ifnull(ky.inamt,0)/10000,decimal(20,6))- convert(ifnull(ky.mkje,ifnull(dk.mkje,0)),decimal(20,6)),
+				convert(ifnull(ky.amt1,0)/10000,decimal(20,6)),convert(ifnull(ky.amt2,0)/10000,decimal(20,6)),
+				convert(ifnull(ky.amt3,0)/10000,decimal(20,6)),ky.sdate,ifnull(ky.xmlb,prjtype.kyjtype),ky.ky_prj_code,
+				if(zkt.ZKTMC is null,ky.ky_prj_code,zkt.ZKTMC),
+				ifnull(ky.ksrq,if(zkt.KSRQ is null,substring((select min(b.sdate) from sams_factdata.V_KY_ALLOCATE as b
+				where b.SA_DEPART=ky.SA_DEPART and b.charge_sno=ky.charge_sno and b.PRJ_CODE=ky.PRJ_CODE
+				and b.ky_prj_code=ky.ky_prj_code),1,10),zkt.KSRQ)),ifnull(ky.jsrq,zkt.JSRQ),convert(ifnull(ifnull(ky.htje,zkt.ZKTHTJE),0),decimal(20,6)),ifnull(xm.hzdw,xm.WTDW)  as lkdw,
+				ky.PRJ_NAME,ky.pcode,ky.pname,ky.pcode2,ky.pnam2,
+				(select mc from sams_factdata.t_dm_xm_xmjb where dm = xm.XMJB limit 1) as XMJB, -- 项目级别
+				(select mc from sams_factdata.t_dm_xm_xmly where dm = xm.xmly limit 1) as xmlb_mc, -- 项目类别
+				xm.PZH,ifnull(bm.C_NAME,'上海交通大学'),ky.syear,
+				(select hr.faculty from sams.hr_basic hr where charge_sno = hr.userid and charge_name=hr.name_cert  and usertype='C' and ifnull(bm.PARENT1_C_ID,
+						ky.SA_DEPART)=hr.superiorfacultycode) as faculty,ky.yftcf,ky.insert_date,
+				(select mc from sams_factdata.t_dm_xm_xmlytj where DM=xm.XMLY_TJ) as xmly_tj,ky.uuid,ky.pz_unino,
+							 ky.clr_order,ky.remuneration,(case when ky.SA_DEPART like '02%' and  
+								 ky.pnam2 like '%横%' then 0.3 else null end ) as remu_rate,ky.performance ,ky.college_manage_fee
+				from sams_factdata.V_KY_ALLOCATE as ky
+				left join sams_factdata.t_ky_xmzkt as zkt on  ky.PRJ_CODE = zkt.JFKKH -- ky.ky_prj_code = zkt.XMBH  and ky.charge_name=zkt.XMFZRXM and
+				left join (select * from  sams_factdata.t_xm_jbxx where del_mark='N') as xm on zkt.XM_WID = xm.WID and  SHZT=2
+				left join sams_factdata.v_dm_bm bm on ky.SA_DEPART= bm.C_ID
+				left join sams_factdata.Finance_Prjtype prjtype on ky.pname = prjtype.cwtype
+				left join sams_data.xm_kymk dk on ky.PRJ_CODE=dk.cwbh and convert(ifnull(ky.inamt,0)/10000,decimal(20,6))=dk.dkje and  substring(ky.sdate,1,10) = dk.rzsj
+				where ky.syear=v_year and ky.scbj='N'
+				group by ky.uuid;
+
+			update sams_data.zkt_cw_info a
+			inner join sams.hr_basic  b on a.gh=b.userid
+			set a.facultycode=b.facultycode
+			where  b.usertype='C' and substring(rzsj,1,4)=v_year;
+
+			update sams_data.zkt_cw_info a
+			inner join sams.hr_basic  b on a.gh=b.userid and  a.facultycode=b.facultycode
+			set a.faculty=b.faculty
+			where  b.usertype='C' and substring(rzsj,1,4)=v_year;
+
+
+/*
+			update sams_data.zkt_cw_info a
+			set a.facultycode = (select facultycode from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.gh in (select userid from sams_data.xm_kylwry );
+
+			update sams_data.zkt_cw_info a
+			set a.faculty = (select faculty from sams_data.xm_kylwry b where b.userid=a.gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.gh in (select userid from sams_data.xm_kylwry );*/
+			
+			update sams_data.zkt_cw_info a
+			set gh=(select hr_userid from sams_data.xm_kyvshr as b where b.ky_userid=a.gh)
+			where gh in (select ky_userid from sams_data.xm_kyvshr);  -- 博士后转教师工号更新
+			
+			update sams_data.zkt_cw_fp a
+			set gh=(select hr_userid from sams_data.xm_kyvshr as b where b.ky_userid=a.gh)
+			where gh in (select ky_userid from sams_data.xm_kyvshr);  -- 博士后转教师工号更新
+			
+			-- 子课题财务分配中存在原始财务已删除的记录，对分配表进行删除操作
+			delete from sams_data.zkt_cw_fp
+where allocate_uuid in (select uuid from sams_factdata.T_KY_ALLOCATE where scbj='y' and syear=v_year);
+
+			-- 子课题财务经费分配表
+
+			insert into sams_data.zkt_cw_fp
+					(uuid,gh,name,fpsj,dkje,mkje,kgje,xglje,yglje,jxje,superiorfacultycode,
+			facultycode,jfkkh,xmbh,xmfl,xmmc,p_gh,p_name,p_rzsj,p_syear,p_dkje,p_mkje,p_kgje
+			,p_xglje,p_yglje,p_jxje,fp_status,p_id,faculty,superiorfaculty,bz,
+					 p_uuid,create_datetime,pz_unino,allocate_uuid,clr_order,
+					 remuneration,remu_rate,performance,college_manage_fee,
+						p_remuneration,p_remu_rate,p_performance,p_college_manage_fee,is_dr,status)
+			select uuid(),gh,fzr_name,rzsj,dkje,ifnull(mkje,0.0),kgje,xgje,ygje,zxjx,superiorfacultycode,facultycode,
+			jfkkh,xmbh,xmfl,xmmc,gh,fzr_name,rzsj,syear,dkje,ifnull(mkje,0.0),kgje,xgje,ygje,zxjx,
+						 0,null,faculty,superiorfaculty,'',uuid,create_datetime,pz_unino,allocate_uuid,clr_order,
+										remuneration,remu_rate,performance,college_manage_fee,
+						remuneration,remu_rate,performance,college_manage_fee,0,77
+			from sams_data.zkt_cw_info
+			where create_datetime > (select max(create_datetime) from sams_data.zkt_cw_fp);
+
+			update sams_data.zkt_cw_fp a
+			inner join sams.hr_basic  b
+			on a.gh=b.userid and b.usertype='C'
+			set a.facultycode=b.facultycode
+			where  b.usertype='C' and substring(p_rzsj,1,4)=v_year ;
+
+			update sams_data.zkt_cw_fp a
+			inner join sams.hr_basic  b 
+			on a.gh=b.userid and b.usertype='C' and a.facultycode=b.facultycode
+			set a.faculty=b.faculty
+			where  b.usertype='C' and substring(p_rzsj,1,4)=v_year ;
+			
+		/*	update sams_data.zkt_cw_fp a
+			inner join sams_data.teacher_info_all_adl b
+			on a.userid=b.userid
+			set a.facultycode=b.facultycode,a.faculty=b.faculty
+			where substring(p_rzsj,1,4)=v_year;
+/*
+			update sams_data.zkt_cw_fp a
+			set a.facultycode = (select facultycode from sams_data.xm_kylwry b where b.userid=a.p_gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.p_gh in (select userid from sams_data.xm_kylwry );
+
+			update sams_data.zkt_cw_fp a
+			set a.faculty = (select faculty from sams_data.xm_kylwry b where b.userid=a.p_gh and b.superiorfacultycode=a.superiorfacultycode)
+			where a.p_gh in (select userid from sams_data.xm_kylwry );*/
+			
+			-- 项目分类与zkt_cw_info相同
+
+			update sams_data.zkt_cw_fp  a inner join sams_data.zkt_cw_info b  on a.allocate_uuid=b.allocate_uuid
+			set a.xmfl=b.xmfl
+			where a.xmfl<>b.xmfl and a.allocate_uuid is not null and b.allocate_uuid is not null;
+
+			update sams_data.zkt_cw_fp  a inner join sams_data.zkt_cw_info b  on a.allocate_uuid=b.allocate_uuid
+			set a.xmfl=b.xmfl
+			where (a.xmfl is null or a.xmfl='') and b.xmfl is not null and a.allocate_uuid is not null and b.allocate_uuid is not null;
+			
+			-- 财务分配表中更新协作人的记录
+			update sams_data.zkt_cw_fp  a inner join sams_data.zkt_cw_fp b on a.p_id=b.uuid
+			set a.xmfl=b.xmfl
+			where a.xmfl<>b.xmfl and a.allocate_uuid is not null and b.allocate_uuid is not null;
+
+			update sams_data.zkt_cw_fp  a inner join sams_data.zkt_cw_fp b on a.p_id=b.uuid
+			set a.xmfl=b.xmfl
+			where (a.xmfl is null  or a.xmfl='') and b.xmfl is not null and a.allocate_uuid is not null and b.allocate_uuid is not null;
+
+			-- 更新工号为空，zkt_cw_info工号不为空的数据
+			update  sams_data.zkt_cw_fp  a inner join sams_data.zkt_cw_info b on a.allocate_uuid=b.allocate_uuid and a.name=b.fzr_name
+			set a.gh=b.gh,a.p_gh=b.gh,a.facultycode=b.facultycode,a.superiorfacultycode=b.superiorfacultycode
+			where a.gh is null and b.gh is not null and (a.p_gh is  null or p_gh ='')
+			and a.name  is not null and p_id is null and length(a.uuid)<>'20' and (a.facultycode is null or a.facultycode='')
+			and a.allocate_uuid is not null and b.allocate_uuid is not null and a.name is not null and b.fzr_name is not null;
+
+
+			
+			-- 更新zkt_cw_fp的项目分类
+ UPDATE sams_data.`zkt_cw_fp` fp JOIN sams_factdata.`T_KY_ALLOCATE_JBXX` jbxx ON fp.`xmbh` = jbxx.`xmbh` AND fp.`gh` = jbxx.`xmfzrgh` 
+ SET fp.xmfl = jbxx.`xmfl` 
+ WHERE jbxx.`xmfl` IS NOT NULL AND LENGTH(jbxx.`xmfl`)>0;
+ 
+ -- 更新zkt_cw_info的项目分类
+ UPDATE sams_data.`zkt_cw_info` cw JOIN sams_factdata.`T_KY_ALLOCATE_JBXX` jbxx ON cw.`xmbh` = jbxx.`xmbh` AND cw.`gh` = jbxx.`xmfzrgh` 
+ SET cw.xmfl = jbxx.`xmfl` 
+ WHERE jbxx.`xmfl` IS NOT NULL AND LENGTH(jbxx.`xmfl`)>0;
+						
+			-- 子课题分配汇总表
+
+       truncate sams_data.zkt_fphz;
+    insert into sams_data.zkt_fphz(id,type,gh,superiorfacultycode,year,month,xmfl,xmfl1,dkje,kgje,facultycode,faculty)
+    select uuid(),1,gh,a.superiorfacultycode,substring(p_rzsj,1,4) as year,substring(p_rzsj,6,2) as month,
+           case when xmfl like '%纵' then '纵向项目'
+                when xmfl like '%横' then '横向项目'
+                else '校内项目'
+               end,xmfl as xmfl1,
+           sum(dkje),sum(kgje),ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty)
+    from sams_data.zkt_cw_fp a
+     where (a.superiorfacultycode<>'03000' or a.superiorfacultycode is null) and is_dr=0
+    group by gh,a.superiorfacultycode,ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty),substring(p_rzsj,1,4) ,substring(p_rzsj,6,2),xmfl
+
+	union
+ select uuid(),1,gh,a.superiorfacultycode,substring(fpsj,1,4) as year,substring(fpsj,6,2) as month,
+           case when xmfl like '%纵' then '纵向项目'
+                when xmfl like '%横' then '横向项目'
+                else '校内项目'
+               end,xmfl as xmfl1,
+           sum(dkje) as zdk,sum(kgje),ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty)
+    from sams_data.zkt_cw_fp a
+    where a.superiorfacultycode='03000' and is_dr=0
+    group by gh,a.superiorfacultycode,ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty),substring(fpsj,1,4) ,substring(fpsj,6,2),xmfl
+	;
+
+    update sams_data.zkt_fphz a inner join sams_factdata.v_dm_bm b on a.superiorfacultycode=b.C_ID
+    set a.superiorfaculty=b.C_NAME
+    where a.superiorfacultycode is not null and a.superiorfaculty is null;
+
+			-- 子课题分配汇总表
+
+			truncate sams_data.zkt_cw_fphz;
+			insert into sams_data.zkt_cw_fphz(id,type,gh,superiorfacultycode,year,month,xmfl,xmfl1,dkje,mkje,kgje,facultycode,faculty)
+			select uuid(),1,gh,a.superiorfacultycode,substring(fpsj,1,4) as year,substring(fpsj,6,2) as month,
+			case when xmfl like '%纵' then '纵向项目'
+			when xmfl like '%横' then '横向项目'
+			else '校内项目'
+			end,xmfl as xmfl1,
+			sum(dkje),sum(mkje),sum(kgje),ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty)
+			from sams_data.zkt_cw_fp a
+			where is_dr=0
+			group by gh,a.superiorfacultycode,ifnull(a.facultycode,a.superiorfacultycode),ifnull(a.faculty,a.superiorfaculty),substring(fpsj,1,4) ,substring(fpsj,6,2), xmfl;
+			
+		
+			
+			-- BC0300000分配经费都在学院，不属于某个系所
+			/*update sams_data.zkt_cw_fp
+			set facultycode='03000',superiorfacultycode='03000'
+			where jfkkh='BC0300000';
+			*/
+			
+			-- BC0200000分配经费都在学院，不属于某个系所
+			update sams_data.zkt_cw_fp
+			set superiorfacultycode='02000',gh=null,name=null
+			where jfkkh='BC0200000' and p_syear=v_year and length(uuid)>20;
+			
+			-- SA0302656 2021年到款有一笔分到了巴黎高科的老师，但系所需要自动化系
+			update sams_data.zkt_cw_fp
+			set facultycode='SEIEE03',faculty='自动化系'
+			where jfkkh='SA0302656' and gh='11889';
+			
+			
+			 select 'OK';
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('8','P_ZKT_CWFP','1',now(),'执行失败');
+	ELSE
+		COMMIT;
+			insert into T_Record_Logs (Module_ID,Module_Name,Type,Record_Time,Remark) values ('8','P_ZKT_CWFP','0',now(),'执行成功');
+	END IF;
+
+END

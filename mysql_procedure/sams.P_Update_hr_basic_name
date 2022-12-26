@@ -1,0 +1,77 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_Update_hr_basic_name`()
+BEGIN
+	#Routine body goes here...
+        DECLARE EXCEPTION INT DEFAULT 0;
+        DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+        START TRANSACTION;
+        #### 判断是否有更新信息
+        if ((select count(*) from sams.hr_basic where scbj='N')<1000) then
+            IF EXCEPTION = 1 THEN
+                    ROLLBACK;
+                    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('34','P_Update_hr_basic_name','1',now(),'执行失败');
+            ELSE
+                    COMMIT;
+                    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('34','P_Update_hr_basic_name','0',now(),'执行成功，无更新内容');
+            END IF;
+	    else
+            INSERT INTO `sams`.`hr_basic_name`(`userid`, `name_cert`, `name_native`, `create_timestamp`, `update_timestamp`, `scbj`, `name`, `name2`)
+            select distinct  a.userid,a.name_cert,a.name_native,now() create_timestamp,now() update_timestamp,a.scbj,substring_index(substring_index(a.name_native,';',b.help_topic_id+1),';',-1),REPLACE(substring_index(substring_index(a.name_native,';',b.help_topic_id+1),';',-1),' ','')
+            from  sams.hr_basic a
+            inner join mysql.help_topic b on b.help_topic_id < (length(a.name_native) - length(replace(a.name_native,';',''))+1)
+            where usertype='C' and not exists (select * from sams.hr_basic_name c where c.userid=a.userid );
+            update `sams`.`hr_basic_name` c
+            inner join sams.hr_basic a on c.userid=a.userid
+            set c.scbj=a.scbj
+        where c.pid is not null;
+
+        -- 根据人事刷新系所单位
+        create temporary table sams.tmp_hr_basic like sams.hr_basic;
+        insert into sams.tmp_hr_basic select * from sams.hr_basic;
+
+        update sams.hr_basic A
+        inner join sams.tmp_hr_basic B on A.userid=B.userid and A.usertype='C' and B.usertype='S'
+        set A.facultycode=B.facultycode,A.faculty=B.faculty
+        where A.facultycode=A.superiorfacultycode and A.facultycode!=B.facultycode;
+
+--                 -- 根据v_dm_bm中sa_facultycode的映射关系修改hr_basic中数据faculty和facultycode的数据
+--                 update sams.hr_basic A
+--                 inner join sams_factdata.v_dm_bm B on A.facultycode=B.C_ID
+--                 inner join sams.tm_org C on B.sa_facultycode=C.`code` and B.PARENT1_C_ID=C.topid
+--                 set A.faculty=C.name,A.facultycode=C.`code`
+--                 where A.usertype='C' and B.sa_facultycode is not null;
+
+        truncate sams.tmp_hr_basic;
+        insert into sams.tmp_hr_basic select * from sams.hr_basic;
+
+         -- 根据v_dm_bm中sa_facultycode的映射关系修改hr_basic中数据faculty和facultycode的数据  20200902 keqi修改版 允许人事数据再次覆盖
+        update sams.hr_basic AA
+        inner join sams.tmp_hr_basic A on AA.USERID=A.USERID and AA.usertype='C'
+        inner join sams_factdata.v_dm_bm B on A.facultycode=B.C_ID
+        inner join sams.tm_org C on B.sa_facultycode=C.`code` and B.PARENT1_C_ID=C.topid
+        set AA.faculty=C.name,AA.facultycode=C.`code`
+        where AA.usertype='C' and B.sa_facultycode is not null;
+
+
+        -- 将退休返聘刷成在职状态 99
+        update sams.hr_basic A
+        inner join sams_factdata.jg_jbxx B on A.userid=B.gh
+        set A.jobstatus='99',B.RYZTM='99'
+        where B.txfp='退休返聘（校内）' and B.txfp_pyjsrq>=replace(curdate(),'-','.')  and A.scbj='N' and B.scbj='N';
+
+
+        update sams.hr_basic A
+        inner join sams_factdata.jg_jbxx B on A.userid=B.gh
+        set A.jobstatus='2',B.RYZTM='2'
+        where B.txfp='退休返聘（校内）' and B.txfp_pyjsrq<replace(curdate(),'-','.')  and A.scbj='N' and B.scbj='N' and B.ryztm in(99,9);
+
+        drop temporary table sams.tmp_hr_basic;
+
+        IF EXCEPTION = 1 THEN
+            ROLLBACK;
+            insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('34','P_Update_hr_basic_name','1',now(),'执行失败');
+        ELSE
+            COMMIT;
+            insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('34','P_Update_hr_basic_name','0',now(),'执行成功');
+        END IF;
+	end if;
+    END

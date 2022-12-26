@@ -1,0 +1,196 @@
+CREATE DEFINER=`sams`@`202.120.3.189` PROCEDURE `Update_V_KYXM_CAMPUS`()
+BEGIN
+	#Routine body goes here...
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	####
+
+	### 项目信息
+    truncate sams_factdata.V_KY_XM_CAMPUS;
+    insert into sams_factdata.V_KY_XM_CAMPUS
+        (xm, gh, xh, zktxmm, cdxmm, XMBH, xmfzrxm, xmfzrgh, CWBH, zktssyx, xmssyx,
+         xmzt, PZH, ZKTHTJE, PTJF, XMDLM, XMDLMC, XMFLM, XMFLMC,
+         XMLYDW, XMLYM, XMLBM, XMLBMC, XMJBM, XMJBMC, JFLYDWM, JFLYDWMC,
+         BZ, XMJF, XKMLM, XKMLMC, xmqsny, xmzzny,SCBJ,XM_WID,ZKT_WID)
+    select xm, gh,
+        (select ifnull(max(xh+1),0) from sams_factdata.V_KY_XM_CAMPUS A where A.gh=all_data.gh)+
+        ROW_NUMBER() OVER ( partition by  all_data.gh  ORDER BY all_data.xmqsny asc) xh,
+        zktxmm, cdxmm, XMBH, xmfzrxm, xmfzrgh, CWBH, zktssyx, xmssyx,
+        xmzt, PZH, ZKTHTJE, PTJF, XMDLM, XMDLMC, XMFLM, XMFLMC,
+        XMLYDW, XMLYM, XMLBM, XMLBMC, XMJBM, XMJBMC, JFLYDWM, JFLYDWMC,
+        BZ, XMJF, XKMLM, XKMLMC, xmqsny, xmzzny,SCBJ,XM_WID,ZKT_WID
+    from
+    (select zkt.xmfzrxm as xm,
+           zkt.XMFZRGH as gh,
+           zkt.ZKTMC as zktxmm,
+           jbxx.xmmc as cdxmm,
+           jbxx.xmbh,
+           jbxx.XMFZRXM,
+           jbxx.XMFZRGH,
+           jbxx.jfkkh as cwbh,
+           zkt.XMFZRSZYX as zktssyx,
+           jbxx.XMSSXY as xmssyx,
+           (case zkt.ZKTJTZT when '1' then '在研' when '2' then '结题'
+               when '3' then '终止' when '4' then '转出' else '' end) as xmzt,
+           jbxx.PZH,
+           round(zkt.ZKTHTJE,1) as ZKTHTJE,
+           round(jbxx.PTJF,1) as PTJF,
+           jbxx.XMDL as XMDLM,
+           aa.mc as xmdlmc ,
+           jbxx.XMFL as XMFLM,
+           bb.mc as xmflmc,
+           jbxx.WTDW as XMLYDW,
+           jbxx.XMLY_TJ as XMLYM,
+           jbxx.XMLB as XMLBM,
+           cc.xmlbmc,
+           jbxx.XMJB as XMJBM,
+           dd.mc as xmjbmc,
+           jbxx.XMLY_TJ as JFLYDWM,
+           ifnull(jbxx.HZDW,WTDW) as JFLYDWMC,
+           jbxx.BZ,
+           round(jbxx.HTJF,1) as XMJF,
+           jbxx.XKML as XKMLM,
+           ee.mc as XKMLMC,
+           jbxx.KSRQ as xmqsny,
+           jbxx.JSRQ as xmzzny,
+           'N' as scbj,
+           jbxx.WID as XM_WID,
+           zkt.WID as zkt_wid
+    from sams_factdata.t_xm_jbxx jbxx
+    left join sams_factdata.t_ky_xmzkt zkt ON zkt.XM_WID=jbxx.wid
+    inner join sams.hr_basic hr_1 on hr_1.userid=zkt.XMFZRGH and hr_1.usertype='C'
+    inner join sams.hr_basic hr on hr.userid=jbxx.XMFZRGH and hr.usertype='C'
+    left join sams_factdata.t_dm_xm_xmdl aa on aa.dm=jbxx.XMDL
+    left join sams_factdata.t_dm_xm_xmfl bb on bb.dm=jbxx.XMFL
+    left join sams_factdata.v_dm_xmlb cc on cc.dm=jbxx.XMLB
+    left join sams_factdata.t_dm_xm_xmjb dd on dd.dm=jbxx.XMJB
+    left join (select mc,dm from sams_factdata.t_dm_xm_xkml where cc=1 and sfqy=1) ee on ee.dm=jbxx.XKML
+    left join sams_factdata.v_dm_bm dm on dm.C_ID=jbxx.XMSSXY
+    left join data_test.t_dm_xm_yjlb yj on jbxx.yjlb=yj.dm
+    where (jbxx.XMSSXY in ('42600','32600','63200')) and jbxx.SHZT=2
+            and zkt.XMFZRGH!='******' and (jbxx.del_mark='N' or jbxx.del_mark is null)
+#    union
+#    select cy.CYXM as xm,
+#           cy.CYGH as gh,
+#           '' as zktxmm,
+#           jbxx.xmmc as cdxmm,
+#           jbxx.xmbh,
+#           jbxx.XMFZRXM,
+#           jbxx.XMFZRGH,
+#           jbxx.jfkkh as cwbh,
+#           '' as zktssdw,
+#           hr.faculty as xmssxs,
+#           (case jbxx.JTZT when '1' then '在研' when '2' then '结题'
+#               when '3' then '终止' when '4' then '转出' else '' end) as xmzt,
+#           jbxx.PZH,
+#           null as ZKTHTJE,
+#           round(jbxx.PTJF,1) as PTJF,
+#           jbxx.XMDL as XMDLM,
+#           aa.mc as xmdlmc ,
+#           jbxx.XMFL as XMFLM,
+#           bb.mc as xmflmc,
+#           jbxx.WTDW as XMLYDW,
+#           jbxx.XMLY_TJ as XMLYM,
+#           jbxx.XMLB as XMLBM,
+#           cc.xmlbmc,
+#           jbxx.XMJB as XMJBM,
+#           dd.mc as xmjbmc,
+#           jbxx.XMLY_TJ as JFLYDWM,
+#           ifnull(jbxx.HZDW,WTDW) as JFLYDWMC,
+#           jbxx.BZ,
+#           round(jbxx.HTJF,1) as XMJF,
+#           jbxx.XKML as XKMLM,
+#           ee.mc as XKMLMC,
+#           jbxx.KSRQ as xmqsny,
+#           jbxx.JSRQ as xmzzny,
+#           'N' as scbj,
+#           jbxx.WID as XM_WID,
+#           '' as zkt_wid
+#    from sams_factdata.t_xm_jbxx jbxx
+#    inner join (
+#        select CYGH,CYXM,XM_WID
+#        from sams_factdata.t_xm_jbxx_xmcy
+#        where cypm!='1'
+#        union
+#        select fp.gh,jg.XM,jbxx.WID
+#        from sams_data.zkt_cw_fp fp
+#        inner join sams_factdata.t_xm_jbxx jbxx
+#        on fp.xmbh=jbxx.xmbh
+#        inner join sams_factdata.jg_jbxx jg
+#        on fp.gh=jg.GH
+#        where fp.xmbh is not null
+#        group by fp.gh,fp.xmbh
+#        ) cy
+#        on jbxx.WID=cy.xm_wid and jbxx.Xmfzrgh!=cy.cygh
+#    inner join sams.hr_basic hr on hr.userid=jbxx.XMFZRGH and hr.usertype='C'
+#    left join sams_factdata.t_dm_xm_xmdl aa on aa.dm=jbxx.XMDL
+#    left join sams_factdata.t_dm_xm_xmfl bb on bb.dm=jbxx.XMFL
+#    left join sams_factdata.v_dm_xmlb cc on cc.dm=jbxx.XMLB
+#    left join sams_factdata.t_dm_xm_xmjb dd on dd.dm=jbxx.XMJB
+#    left join (select mc,dm from sams_factdata.t_dm_xm_xkml where cc=1 and sfqy=1) ee on ee.dm=jbxx.XKML
+#    left join sams_factdata.v_dm_bm dm on dm.C_ID=jbxx.XMSSXY
+#    left join data_test.t_dm_xm_yjlb yj on jbxx.yjlb=yj.dm
+#    where not exists(select wid from sams_factdata.t_ky_xmzkt zkt where cy.XM_WID=zkt.xm_wid and cy.cygh=zkt.xmfzrgh)
+#      and (jbxx.XMSSXY in ('42600','32600','63200')) and jbxx.shzt=2
+#      and cy.CYGH!='******' and (jbxx.del_mark='N' or jbxx.del_mark is null)
+    ) all_data ;
+
+	### 项目成员
+	truncate sams_factdata.V_KY_XMCY_CAMPUS;
+    insert into sams_factdata.V_KY_XMCY_CAMPUS(WID, XM_WID, RYLB, CYGH,
+                                               CYXM, SZDWDM, SZDWMC, ZC, CYPM, CYGZL,
+                                               RYGZL, XWM, XZZW, CSNY)
+    select WID, XM_WID, RYLB, CYGH,
+            CYXM, sdzwdm,sdzwxwmc,ZC, CYPM, CYGZL,
+            RYGZL, XWM, XZZW, CSNY
+    from sams_factdata.t_xm_jbxx_xmcy cy
+    where XM_WID in (select distinct xm_wid from sams_factdata.V_KY_XM_CAMPUS);
+
+	
+	### 专利信息
+	truncate sams_factdata.V_KY_ZLK_CAMPUS;
+	insert into sams_factdata.V_KY_ZLK_CAMPUS
+    (id, gh, xm, xh, superiorfacultycode, superiorfaculty,
+     zlmc, zlh, zllbm, zllbmc, sqny, sqzt, sqh, shouqrq, sqdw,
+     sfjdwdydwm, sfjdwdydw, inventor_gh, inventor, attach_name,
+     nation, transfer, situation, year_of_assessment, user_type,
+     pm, zljsm, zljs, qr, bz, create_timestamp, update_timestamp,
+     scbj)
+    select sr.id, gh, xm,
+        (select ifnull(max(xh+1),0) from sams_factdata.V_KY_ZLK_CAMPUS A where A.gh=sr.gh)+
+         ROW_NUMBER() OVER ( partition by gh  ORDER BY sqny asc ) xh,
+        superiorfacultycode, superiorfaculty,
+        zlmc, zlh, zllbm, zllb.mc, sqny, sqzt, sqh, shouqrq, sqdw,
+        sfjdwdydw, if(sfjdwdydw='1','是','否'),
+        (select group_concat(distinct A.gh) from sams_factdata.sr_patent A where A.zlmc=sr.zlmc and A.scbj='N' group by zlmc),
+        inventor, att.attach_name,nation, transfer, situation, year_of_assessment, '校内人员' as user_type,
+         pm, zljsm, if(zljsm='001','负责人','参与人'), qr, bz, create_timestamp, update_timestamp,
+         scbj
+    from sams_factdata.sr_patent sr
+    left join sams_factdata.DM_ZLLB zllb on zllb.dm=sr.zllbm
+    left join sams_factdata.sr_patent_attach att on att.patent_id=sr.id
+    where sr.superiorfacultycode in  ('42600','32600','63200') and sr.qr='77' and scbj='N';
+
+	
+	### 项目到款
+    truncate sams_factdata.V_KY_XMDK_CAMPUS;
+    insert into sams_factdata.V_KY_XMDK_CAMPUS
+    select cw.uuid, cw.gh, cw.name, cw.fpsj, cw.dkje, cw.mkje, cw.kgje,
+           cw.xglje, cw.yglje, cw.jxje, cw.superiorfacultycode, facultycode,
+           cw.jfkkh, cw.xmbh, xmfl, xmmc, p_gh, p_name, p_rzsj, p_syear,
+           p_dkje, p_mkje, p_kgje, p_xglje, p_yglje,
+           p_jxje, fp_status, faculty, superiorfaculty,
+           cw.bz, create_datetime,xm.XM_WID,xm.ZKT_WID
+	from sams_factdata.V_KY_XM_CAMPUS xm
+	inner join sams_data.zkt_cw_fp cw on cw.xmbh=xm.XMBH and xm.gh=cw.gh;
+
+
+	IF EXCEPTION = 1 THEN
+	    ROLLBACK;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('32','Update_V_KYXM_CAMPUS','1',now(),'执行失败');
+	ELSE
+	    COMMIT;
+	    insert into data_test.cxr_T_record (Module_ID,Module_Name,Type,Record_Time,Remark) values ('32','Update_V_KYXM_CAMPUS','0',now(),'执行成功');
+	END IF;
+END

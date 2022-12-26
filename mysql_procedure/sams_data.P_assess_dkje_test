@@ -1,0 +1,41 @@
+CREATE DEFINER=`sams`@`202.120.3.%` PROCEDURE `P_assess_dkje_test`(IN userid varchar(20), IN start_time varchar(20))
+    COMMENT '按照开始时间统计某一个人的项目到款'
+BEGIN
+	DECLARE EXCEPTION INT DEFAULT 0;
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET EXCEPTION = 1;
+	START TRANSACTION;
+	
+
+    # 插入项目人的信息
+    ## 负责人信息
+	
+		
+	insert into data_test.huxinyu_assess_amount_test (xm_wid,wid,finance_no, project_no, userid,amount, start_time,xm_ksrq)
+	select xm_wid,wid,f.jfkkh,f.xmbh,
+												f.gh,
+												dkje,start_time,ksrq
+	from sams_data.xm_zkthz_show f
+	where  f.ksrq	>=start_time and gh=userid and is_dr='0'
+	and not EXISTS (select 1 from sams_data.zkt_cw_fp c where f.jfkkh=c.jfkkh  and c.p_id is not null)
+	and not EXISTS(select 1 from data_test.huxinyu_assess_amount_test b where ((f.wid=b.wid and f.wid<>'')  or (f.xm_wid=b.xm_wid and f.xm_wid<>'')
+	or (f.jfkkh=b.finance_no and f.jfkkh<>'') or (f.xmbh=b.project_no and f.xmbh<>'')) and f.gh=b.userid)	;
+
+	insert into data_test.huxinyu_assess_amount_test (xm_wid,wid,finance_no, project_no, userid,amount, start_time,xm_ksrq)
+	select b.xm_wid,b.wid,f.jfkkh,f.xmbh,
+		f.gh,
+		sum(f.dkje) as assess_dkje,start_time,b.ksrq
+	from sams_data.zkt_cw_fp f inner join sams_data.xm_zkthz_show b on f.jfkkh=b.jfkkh and f.gh=b.gh
+	where  b.ksrq	>=start_time and f.p_rzsj	>=start_time and f.gh=userid and is_dr='0'
+	and not EXISTS(select 1 from data_test.huxinyu_assess_amount_test d where d.finance_no=f.jfkkh	and d.userid=f.gh)
+	group by  jfkkh,gh;
+
+
+
+	IF EXCEPTION = 1 THEN
+		ROLLBACK;
+	ELSE
+		COMMIT;
+	END IF;
+	
+	
+END
